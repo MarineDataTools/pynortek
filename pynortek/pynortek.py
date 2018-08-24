@@ -11,7 +11,7 @@ import re
 version_file = pkg_resources.resource_filename('pynortek','VERSION')
 
 # Setup logging module
-logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
+logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 logger = logging.getLogger('pynortek')
 
 raw_data_files = ['.prf','.vec'] # Names of raw binary data files 
@@ -28,6 +28,7 @@ class pynortek():
     def __init__(self,filename, verbosity=logging.DEBUG, timezone=pytz.UTC):
         """
         """
+        logger.setLevel(verbosity)
         self.timezone = timezone
         self.deployment = os.path.split(filename)[-1]
         self.fpath = os.path.split(filename)[0]
@@ -87,12 +88,15 @@ class pynortek():
                     header_field = 'sensors'
                     header[header_field] = {}
 
+            # Transducer distance 
             if(('Beam' in l) and ('Vertical' in l)):
                 print('Transducer distance')
                 header_field = 'distance'
                 header[header_field] = {'cell':[],'beam':[],'vertical':[]}
                 continue
-                    
+
+            
+            # Check for the header field        
             if('User setup' in l):
                 print('User setup')
                 header_field = 'User setup'
@@ -111,11 +115,30 @@ class pynortek():
                     print('Header ' + header_field + ' over')
                     header_field = None
 
-                    
+            # Check for a one line list        
             ind = l.find('  ')
             if(ind >= 0):
                 if('Number of measurements' in l):
                     header['Number of measurements'] = int(l.split()[-1])
+                elif('Coordinate system' in l):
+                    header['Coordinate system'] = l.split()[-1]
+                    logger.debug('Coordinate system found: ' + header['Coordinate system'])
+                elif('Horizontal velocity range' in l):
+                    header['Horizontal velocity range'] = float(l.split()[-2])
+                    logger.debug('Horizontal velocity range: ' + str(header['Horizontal velocity range']))
+                elif('Vertical velocity range' in l):
+                    header['Vertical velocity range'] = float(l.split()[-2])
+                    logger.debug('Vertical velocity range: ' + str(header['Vertical velocity range']))
+                elif('Orientation' in l):
+                    header['Orientation'] = l.split()[-1]
+                    if('DOWN' in header['Orientation']):
+                        header['updown'] = True
+                    else:
+                        header['updown'] = False
+
+                    logger.debug('Orientation ' + header['Orientation'] + ' updown:' + str(header['updown']))
+                    
+                    
                 elif('Number of checksum errors' in l):
                     header['Number of checksum errors'] = int(l.split()[-1])
                 elif('Time of first measurement' in l):
@@ -130,6 +153,35 @@ class pynortek():
                     ttmp = datetime.datetime.strptime(tstr,datefmt)
                     ttmp = ttmp.replace(tzinfo=self.timezone)                    
                     header['Time of last measurement'] = ttmp
+                elif('Transformation matrix' in l):
+                    logger.debug('Transformation matrix found')
+                    header['Transformation matrix'] = np.zeros((3,3))
+                    # Get all three lines
+                    tmp = []
+                    tmp.append(l)
+                    tmp.append(fhdr.readline())
+                    tmp.append(fhdr.readline())                    
+                    for i in range(3):
+                        T_tmp = np.asarray(tmp[i].split()[-3:]).astype(np.float)
+                        header['Transformation matrix'][i,:] = T_tmp
+
+                    logger.debug(str(header['Transformation matrix']))
+
+                elif('Magnetometer calibration matrix' in l):
+                    logger.debug('Magnetometer calibration matrix found')
+                    header['Magnetometer calibration matrix'] = np.zeros((3,3))
+                    # Get all three lines
+                    tmp = []
+                    tmp.append(l)
+                    tmp.append(fhdr.readline())
+                    tmp.append(fhdr.readline())                    
+                    for i in range(3):
+                        T_tmp = np.asarray(tmp[i].split()[-3:]).astype(np.float)
+                        header['Magnetometer calibration matrix'][i,:] = T_tmp
+
+                    logger.debug(str(header['Magnetometer calibration matrix']))
+
+
                 else:
                     pass
 
@@ -177,7 +229,7 @@ class pynortek():
             minute = int(self.rawdata['sen'][i,4])
             millis = self.rawdata['sen'][i,5]%1
             second = int(self.rawdata['sen'][i,5] - millis)
-            micro  = int(millis*1000)
+            micro  = int(millis*1000*1000)
             ttmp = datetime.datetime(year,month,day,hour,minute,second,micro,tzinfo=self.timezone)
             t.append(ttmp)
             tu.append(ttmp.timestamp())
@@ -207,10 +259,132 @@ class pynortek():
         for key in vector_keys:
             if(key in self.rawdata.keys()):
                print('Getting data from: ' + key + ' (Vector)')
-               self.data[key] = self.rawdata[key][:,2:]               
+               self.data[key] = self.rawdata[key][:,2:]
+
+
+    def rot_vel(self,coord,updown=None,save=False):
+        """ Rotates the velocities to different coordinate system
+        Args:
+            coord:
+            updown:
+            save:
+        """
+        logger.debug('trans_coord():')
+        T = self.header['Transformation matrix'][:]
+        if(updown == None):
+            updown = self.header['updown']
+
+        # flip axes if instrument is pointing downward
+        # (so from here on, XYZ refers to a right-handed coordinate system
+        # with z pointing upward)
+
+        if updown:
+            logger.debug('Downlooking, changing matrix')
+            T[1,:] = -T[1,:];
+            T[2,:] = -T[2,:];
+
+        v1_rot = np.zeros(np.shape(self.data['v1']))
+        v2_rot = np.zeros(np.shape(self.data['v2']))
+        v3_rot = np.zeros(np.shape(self.data['v3']))
+        try:
+            v1_rep_rot = np.zeros(np.shape(self.data['v1_rep']))
+            v2_rep_rot = np.zeros(np.shape(self.data['v2_rep']))
+            v3_rep_rot = np.zeros(np.shape(self.data['v3_rep']))
+            repaired = True
+        except:
+            repaired_false = True            
+            pass
+        
+        print(np.shape(self.data['v1']))
+        if(coord == 'XYZ'):
+            if(self.header['Coordinate system'] == 'BEAM'):
+                logger.debug('BEAM to XYZ')
+                for i in range(np.shape(v1_rot)[0]):
+                    for j in range(np.shape(v1_rot)[1]):
+                        v1_rot[i,j] = T[0,0] * self.data['v1'][i,j] + T[0,1] * self.data['v2'][i,j] + T[0,2] * self.data['v3'][i,j]
+                        v2_rot[i,j] = T[1,0] * self.data['v1'][i,j] + T[1,1] * self.data['v2'][i,j] + T[1,2] * self.data['v3'][i,j]
+                        v3_rot[i,j] = T[2,0] * self.data['v1'][i,j] + T[2,1] * self.data['v2'][i,j] + T[2,2] * self.data['v3'][i,j]
+                        if repaired:
+                            v1_rep_rot[i,j] = T[0,0] * self.data['v1_rep'][i,j] + T[0,1] * self.data['v2_rep'][i,j] + T[0,2] * self.data['v3_rep'][i,j]
+                            v2_rep_rot[i,j] = T[1,0] * self.data['v1_rep'][i,j] + T[1,1] * self.data['v2_rep'][i,j] + T[1,2] * self.data['v3_rep'][i,j]
+                            v3_rep_rot[i,j] = T[2,0] * self.data['v1_rep'][i,j] + T[2,1] * self.data['v2_rep'][i,j] + T[2,2] * self.data['v3_rep'][i,j]                        
+
+
+        if save:
+            logger.debug('saving data in trans')
+            try: # Check if self.trans is existing
+                self.trans
+            except:
+                self.rotvel = {}
+            if(coord == 'XYZ'):
+                self.rotvel['u'] = v1_rot[:]
+                self.rotvel['v'] = v2_rot[:]
+                self.rotvel['w'] = v3_rot[:]
+                if repaired:                
+                    # Save the repaired data as well
+                    self.rotvel['u_rep'] = v1_rep_rot[:]
+                    self.rotvel['v_rep'] = v2_rep_rot[:]
+                    self.rotvel['w_rep'] = v3_rep_rot[:]                                
+
+
+        return [v1_rot,v2_rot,v3_rot]
 
 
         
+    def repair_phase_shift(self,vel=None,threshold=None, save = False):
+        """Tries to repair a phase shift in pulse coherent measurements. It
+        assumes that the first measured value is correct.
+
+        """
         
-        
-        
+        if(vel == None):
+            vel = self.data
+            logger.debug('repairing native velocity')
+            coordinate_system = self.header['Coordinate system']
+            vel_all = [self.data['v1'],self.data['v2'],self.data['v3']]
+        else:
+            vel_all = [vel]
+            
+        vel_rep_all = []
+        for vel_tmp in vel_all:
+        # Compute threshold from header data
+            if( coordinate_system == 'BEAM'):
+                logger.debug('Using thresholds for beam coordinates')
+                # Get the factor for the beam from the vertical velocity
+                fac = np.linalg.inv(self.header['Transformation matrix'])[0,2]
+                threshold_tmp = self.header['Vertical velocity range']# * fac
+            else:
+                logger.debug('Unknown threshold, returning')
+                return
+
+            vel_rep = np.zeros(np.shape(vel_tmp))
+            for i in range(np.shape(vel_rep)[1]):
+                vel_rep[:,i] = self.repair_phase_shift_vector(vel_tmp[:,i],threshold_tmp)
+                
+            vel_rep_all.append(vel_rep)
+
+
+        print('hallo',vel is self.data)
+        if((vel is self.data) and save):
+            logger.debug("Saving data as data['v1_rep'] etc")
+            self.data['v1_rep'] = vel_rep_all[0]
+            self.data['v2_rep'] = vel_rep_all[1]
+            self.data['v3_rep'] = vel_rep_all[2]
+
+
+    def repair_phase_shift_vector(self,vel,threshold):
+        """Tries to repair a phase shift in pulse coherent measurements. It
+        assumes that the first measured value is correct.
+
+        """
+
+        vel_rep = vel.copy()
+
+        vthresh = threshold - 0.3 * threshold
+        for i in range(1,len(vel)):
+            if((np.sign(vel_rep[i-1]) != np.sign(vel_rep[i])) and (abs(vel_rep[i-1]) > vthresh) and (abs(vel_rep[i]) > vthresh)):
+               #print('Phase shift!')
+               dv = threshold - abs(vel_rep[i])
+               vel_rep[i] =  np.sign(vel_rep[i-1]) * (threshold + dv)
+
+        return vel_rep    
