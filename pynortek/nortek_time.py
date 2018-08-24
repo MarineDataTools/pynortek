@@ -660,6 +660,16 @@ class guiMain(QtWidgets.QMainWindow):
     def nortek_serial_open_bu(self):
         PORT = self.combo_serial.currentText()
         BAUD = int(self.combo_baud.currentText().split()[0])
+        try: # Close a serial device if its existing
+            dstr = 'Closing already open serial device'
+            self.text.appendPlainText(dstr)
+            if self.log_check.isChecked():
+                self.logfile.write(dstr + '\n')
+                self.logfile.flush()                                        
+            self.ser.close()
+        except:
+            pass
+        
         ser = serial.Serial(PORT,BAUD)  # open serial port
         self.ser = ser
         print('Opened port: ' + ser.name)         # check which port was really used
@@ -689,6 +699,13 @@ class guiMain(QtWidgets.QMainWindow):
     def todl_serial_open_bu(self):
         PORT = self.combo_serial.currentText()
         BAUD = int(self.combo_baud.currentText().split()[0])
+        try: # Close a serial device if its existing
+            dstr = 'Closing already open serial device'
+            self.print(dstr)            
+            self.ser.close()
+        except:
+            pass
+        
         ser = serial.Serial(PORT,BAUD)  # open serial port
         self.ser = ser
         print('Opened port: ' + ser.name)         # check which port was really used
@@ -702,9 +719,11 @@ class guiMain(QtWidgets.QMainWindow):
         data = ser.read(ser.in_waiting)
         t_todl = todl_parse_time(data)
         if(t_todl is not None):
-            print('Found a TODL')
+            dstr = 'Found a TODL'
         else:
-            print('Did not find a TODL, exiting ...')
+            dstr = 'Did not find a TODL, exiting ...'
+
+        self.print(dstr)
 
 
     def todl_get_time(self):
@@ -754,6 +773,13 @@ class guiMain(QtWidgets.QMainWindow):
         funcname = '_quit()'        
         logger.debug(funcname)
         self.close()
+
+    def print(self,dstr):
+        self.text.appendPlainText(dstr)
+        if self.log_check.isChecked():
+            self.logfile.write(dstr + '\n')
+            self.logfile.flush()                                                
+        
 
         
     def _about(self):
