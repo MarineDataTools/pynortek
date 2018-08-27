@@ -642,19 +642,20 @@ class guiMain(QtWidgets.QMainWindow):
         
         tset = datetime.datetime.utcnow()
         ts = tset.strftime('%Y-%m-%d %H:%M:%S')
-        time_str = 'Setting time to:' + ts 
-        self.text.appendPlainText(time_str)
-        if self.log_check.isChecked():
-            self.logfile.write(time_str + '\n')
-            self.logfile.flush()        
+        time_str = 'Setting time to:' + ts
+        self.print(time_str)
 
 
         if self.dt == None:
             dt = 0
         else:
             dt = self.dt.total_seconds()*1e6
+            if(abs(dt) > (1.0*1e6)):
+                dt = 0
+
             
-        nortek_set_time_fancy(self.ser,tset,dt)        
+        nortek_set_time_fancy(self.ser,tset,dt)
+        #nortek_set_time_fancy(self.ser,tset,0)
             
 
     def nortek_serial_open_bu(self):
@@ -743,10 +744,7 @@ class guiMain(QtWidgets.QMainWindow):
             print(t_system,t_todl)
 
             dstr = 'Time TODL:' + str(t_todl) + ' time computer: ' + str(t_system) + ' difference [s]: ' + str(dt.total_seconds())
-            self.text.appendPlainText(dstr)
-            if self.log_check.isChecked():
-                self.logfile.write(dstr + '\n')
-                self.logfile.flush()                            
+            self.print(dstr)
 
 
     def todl_set_time(self):
@@ -756,7 +754,7 @@ class guiMain(QtWidgets.QMainWindow):
             print('No serial port open, doing nothing')
             return
             
-        
+        self.print('Setting TODL time')
         todl_set_time(self.ser)        
         
     def test_ports(self):
