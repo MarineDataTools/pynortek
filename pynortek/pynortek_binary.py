@@ -45,14 +45,36 @@ def timefrombin(data):
     return conv_data
 
 
-def convert_vector_system_data(data,apply_unit_factor = False):
+def convert_vector_system_data(data,apply_unit_factor = False,units = False):
     #print('Vector system data')
     #print('System data',data)
     if(apply_unit_factor):
         pass
 
     conv_data = {}
-    conv_data['units'] = {}
+    if units:
+        conv_data['units'] = {}
+        conv_data['dtype'] = {}
+        conv_data['units']['bat']    = 'battery voltage (0.1 V)'
+        conv_data['units']['SndVel'] = 'speed of sound (0.1 m/s)'
+        conv_data['units']['Hdg']    = 'compass heading (0.1 deg)'
+        conv_data['units']['Pitch']  = 'compass pitch (0.1 deg)'
+        conv_data['units']['Roll']   = 'compass roll (0.1 deg)'
+        conv_data['units']['T']      = 'temperature (0.01 deg C)'
+        conv_data['units']['err']    = 'Error code'
+        conv_data['units']['stat']   = 'Status code'
+        conv_data['units']['AnaIn']  = 'counts (V = 5/65536)'
+        conv_data['dtype']['bat']    = 'i'
+        conv_data['dtype']['SndVel'] = 'i'
+        conv_data['dtype']['Hdg']    = 'i'
+        conv_data['dtype']['Pitch']  = 'i'
+        conv_data['dtype']['Roll']   = 'i'
+        conv_data['dtype']['T']      = 'i'
+        conv_data['dtype']['err']    = 'i'
+        conv_data['dtype']['stat']   = 'i'
+        conv_data['dtype']['AnaIn']  = 'i'
+        return conv_data
+    
     conv_data['minute']       = (data[4] & 0x0F) + 10 * ((data[4] >> 4) & 0x0F)
     conv_data['second']       = (data[5] & 0x0F) + 10 * ((data[5] >> 4) & 0x0F)
     conv_data['day']          = (data[6] & 0x0F) + 10 * ((data[6] >> 4) & 0x0F)
@@ -60,34 +82,15 @@ def convert_vector_system_data(data,apply_unit_factor = False):
     conv_data['year']         = (data[8] & 0x0F) + 10 * ((data[8] >> 4) & 0x0F) + 2000
     conv_data['month']        = (data[9] & 0x0F) + 10 * ((data[9] >> 4) & 0x0F)
     conv_data['bat']          = struct.unpack('<H', data[10:12])[0] # Little endian
-    conv_data['units']['bat'] = 'battery voltage (0.1 V)'
     conv_data['SndVel']       = struct.unpack('<H', data[12:14])[0] # Little endian
-    conv_data['units']['SndVel'] = 'speed of sound (0.1 m/s)'
-    conv_data['Hdg']             = struct.unpack('<h', data[14:16])[0] # Little endian
-    conv_data['units']['Hdg']    = 'compass heading (0.1 deg)'
-    conv_data['Pitch']            = struct.unpack('<h', data[16:18])[0] # Little endian
-    conv_data['units']['Pitch']   = 'compass pitch (0.1 deg)'    
-    conv_data['Roll']            = struct.unpack('<h', data[18:20])[0] # Little endian
-    conv_data['units']['Roll']   = 'compass roll (0.1 deg)'
+    conv_data['Hdg']          = struct.unpack('<h', data[14:16])[0] # Little endian
+    conv_data['Pitch']        = struct.unpack('<h', data[16:18])[0] # Little endian
+    conv_data['Roll']         = struct.unpack('<h', data[18:20])[0] # Little endian
     conv_data['T']            = struct.unpack('<h', data[20:22])[0] # Little endian
-    conv_data['units']['T']   = 'temperature (0.01 deg C)'
-    conv_data['err']            = int(data[23])
-    conv_data['units']['err']   = 'Error code'
-    conv_data['stat']            = int(data[23])
-    conv_data['units']['stat']   = 'Status code'
-    conv_data['AnaIn']            = float(struct.unpack('<H', data[20:22])[0]) # Little endian
-    conv_data['units']['AnaIn']   = 'counts (V = 5/65536)'
-
-    
-    #print((data[5] & 0x0F),((data[5]>>4) & 0x0F))
-    #print(conv_data)
-    #print('day',data[6])
-    conv_data['date']    = datetime.datetime(conv_data['year'],conv_data['month'],conv_data['day'],conv_data['hour'],conv_data['minute'],conv_data['second'])
-
-    #print(conv_data)
-    #print('Vector system data')
-    #print('Vector system data')
-    #print('End Vector system data')
+    conv_data['err']          = int(data[23])
+    conv_data['stat']         = int(data[23])
+    conv_data['AnaIn']        = float(struct.unpack('<H', data[20:22])[0]) # Little endian
+    conv_data['date']         = datetime.datetime(conv_data['year'],conv_data['month'],conv_data['day'],conv_data['hour'],conv_data['minute'],conv_data['second'])
     return conv_data
 
 
@@ -100,78 +103,117 @@ def convert_vector_velocity_header(data,apply_unit_factor = False):
     #print('End Vectir velocity header')
 
 
-def convert_vector_IMU(data,apply_unit_factor = False):
+def convert_vector_IMU(data,apply_unit_factor = False,units = False):
     """ Converts binary data in a vector velocity data structure
     """
     conv_data = {}
-    conv_data['units']  = {}
+    if units:
+        conv_data['units']  = {}
+        conv_data['dtype']  = {}        
+        conv_data['units']['DeltaAngleX'] = 'Delta Angle x (radians)'
+        conv_data['units']['DeltaAngleY'] = 'Delta Angle y (radians)'
+        conv_data['units']['DeltaAngleZ'] = 'Delta Angle z (radians)'
+        conv_data['units']['DeltaVelX'] = 'Delta Velocity Rate x (g*seconds)'
+        conv_data['units']['DeltaVelY'] = 'Delta Velocity Rate y (g*seconds)'
+        conv_data['units']['DeltaVelZ'] = 'Delta Velocity Rate z (g*seconds)'
+        conv_data['units']['M11'] = 'Orientation Matrix X (M11). Describes the orientation of the IMU'
+        conv_data['units']['M12'] = 'Orientation Matrix X (M12). Describes the orientation of the IMU'
+        conv_data['units']['M13'] = 'Orientation Matrix X (M13). Describes the orientation of the IMU'
+        conv_data['units']['M21'] = 'Orientation Matrix X (M21). Describes the orientation of the IMU'
+        conv_data['units']['M22'] = 'Orientation Matrix X (M22). Describes the orientation of the IMU'
+        conv_data['units']['M23'] = 'Orientation Matrix X (M23). Describes the orientation of the IMU'
+        conv_data['units']['M31'] = 'Orientation Matrix X (M31). Describes the orientation of the IMU'
+        conv_data['units']['M32'] = 'Orientation Matrix X (M32). Describes the orientation of the IMU'
+        conv_data['units']['M33'] = 'Orientation Matrix X (M33). Describes the orientation of the IMU'
+        conv_data['units']['timer'] = 'Timer value, measures the time since start of each burst. To convert the timer value to time in seconds, divide by 62,500.'
+        conv_data['dtype']['DeltaAngleX'] = 'f'
+        conv_data['dtype']['DeltaAngleY'] = 'f'
+        conv_data['dtype']['DeltaAngleZ'] = 'f'
+        conv_data['dtype']['DeltaVelX']   = 'f'
+        conv_data['dtype']['DeltaVelY']   = 'f'
+        conv_data['dtype']['DeltaVelZ']   = 'f'
+        conv_data['dtype']['M11']         = 'f'
+        conv_data['dtype']['M12']         = 'f'
+        conv_data['dtype']['M13']         = 'f'
+        conv_data['dtype']['M21']         = 'f'
+        conv_data['dtype']['M22']         = 'f'
+        conv_data['dtype']['M23']         = 'f'
+        conv_data['dtype']['M31']         = 'f'
+        conv_data['dtype']['M32']         = 'f'
+        conv_data['dtype']['M33']         = 'f'
+        conv_data['dtype']['timer']       = 'i'
+        return conv_data
+    
     conv_data['EnsCnt'] = data[4]
     conv_data['AHRSId'] = data[5]
     conv_data['DeltaAngleX'] = struct.unpack('<f', data[6:10])[0] # Little endian
-    conv_data['units']['DeltaAngleX'] = 'Delta Angle x (radians)'
     conv_data['DeltaAngleY'] = struct.unpack('<f', data[10:14])[0] # Little endian
-    conv_data['units']['DeltaAngleY'] = 'Delta Angle y (radians)'    
     conv_data['DeltaAngleZ'] = struct.unpack('<f', data[14:18])[0] # Little endian
-    conv_data['units']['DeltaAngleZ'] = 'Delta Angle z (radians)'        
     conv_data['DeltaVelX'] = struct.unpack('<f', data[18:22])[0] # Little endian
-    conv_data['units']['DeltaVelX'] = 'Delta Velocity Rate x (g*seconds)'
     conv_data['DeltaVelY'] = struct.unpack('<f', data[22:26])[0] # Little endian
-    conv_data['units']['DeltaVelY'] = 'Delta Velocity Rate y (g*seconds)'    
     conv_data['DeltaVelZ'] = struct.unpack('<f', data[26:30])[0] # Little endian
-    conv_data['units']['DeltaVelZ'] = 'Delta Velocity Rate z (g*seconds)'
     conv_data['M11']   = struct.unpack('<f', data[30:34])[0] # Little endian
-    conv_data['units']['M11'] = 'Orientation Matrix X (M11). Describes the orientation of the IMU'
     conv_data['M12']   = struct.unpack('<f', data[34:38])[0] # Little endian
-    conv_data['units']['M12'] = 'Orientation Matrix X (M12). Describes the orientation of the IMU'    
     conv_data['M13']   = struct.unpack('<f', data[38:42])[0] # Little endian
-    conv_data['units']['M13'] = 'Orientation Matrix X (M13). Describes the orientation of the IMU'    
     conv_data['M21']   = struct.unpack('<f', data[42:46])[0] # Little endian
-    conv_data['units']['M21'] = 'Orientation Matrix X (M21). Describes the orientation of the IMU'    
     conv_data['M22']   = struct.unpack('<f', data[46:50])[0] # Little endian
-    conv_data['units']['M22'] = 'Orientation Matrix X (M22). Describes the orientation of the IMU'    
     conv_data['M23']   = struct.unpack('<f', data[50:54])[0] # Little endian
-    conv_data['units']['M23'] = 'Orientation Matrix X (M23). Describes the orientation of the IMU'    
     conv_data['M31']   = struct.unpack('<f', data[54:58])[0] # Little endian
-    conv_data['units']['M31'] = 'Orientation Matrix X (M31). Describes the orientation of the IMU'    
     conv_data['M32']   = struct.unpack('<f', data[58:62])[0] # Little endian
-    conv_data['units']['M32'] = 'Orientation Matrix X (M32). Describes the orientation of the IMU'    
     conv_data['M33']   = struct.unpack('<f', data[62:66])[0] # Little endian
-    conv_data['units']['M33'] = 'Orientation Matrix X (M33). Describes the orientation of the IMU'    
     conv_data['timer'] = struct.unpack('<i', data[66:70])[0] # Little endian
-    conv_data['units']['timer'] = 'Timer value, measures the time since start of each burst. To convert the timer value to time in seconds, divide by 62,500.'
     return conv_data
 
-def convert_vector_velocity(data,apply_unit_factor = False):
+def convert_vector_velocity(data,apply_unit_factor = False,units = False):
     """ Converts binary data in a vector velocity data structure
     """
     #print('Vector velocity data')
     #print(data)
-    fac_analog = 1.0
-    fac_press  = 1.0
-    fac_vel    = 1.0
-    if(apply_unit_factor):
-        fac_analog = 5/65536
-        pac_press = 1000.
-        fac_vel   = 1/1000. # mm/s to m/s
-
+    if units:
+        conv_data['units']  = {}
+        conv_data['dtype']  = {}
+        conv_data['units']['Count']  = 'ensemble counter'
+        conv_data['units']['AnaIn2'] = 'counts (V = 5/65536)'
+        conv_data['units']['AnaIn1'] = 'counts (V = 5/65536)'
+        conv_data['units']['p']      = 'pressure (0.001 dbar)'
+        conv_data['units']['v1']     = 'velocity beam1 or X or East (mm/s)'
+        conv_data['units']['v2']     = 'velocity beam2 or Y or North (mm/s)'
+        conv_data['units']['v3']     = 'velocity beam3 or Z or Up (mm/s)'
+        conv_data['units']['a1']     = 'amplitude beam1 (counts)'
+        conv_data['units']['a2']     = 'amplitude beam2 (counts)'
+        conv_data['units']['a3']     = 'amplitude beam3 (counts)'
+        conv_data['units']['c1']     = 'correlation beam1 (%)'
+        conv_data['units']['c2']     = 'correlation beam2 (%)'
+        conv_data['units']['c3']     = 'correlation beam3 (%)'
+        conv_data['dtype']['Count']  = 'i'
+        conv_data['dtype']['AnaIn2'] = 'i'
+        conv_data['dtype']['AnaIn1'] = 'i'
+        conv_data['dtype']['p']      = 'i'
+        conv_data['dtype']['v1']     = 'i'
+        conv_data['dtype']['v2']     = 'i'
+        conv_data['dtype']['v3']     = 'i'
+        conv_data['dtype']['a1']     = 'i'
+        conv_data['dtype']['a2']     = 'i'
+        conv_data['dtype']['a3']     = 'i'
+        conv_data['dtype']['c1']     = 'i'
+        conv_data['dtype']['c2']     = 'i'
+        conv_data['dtype']['c3']     = 'i'
+        return conv_data
+        
     conv_data = {}
     conv_data['Count']  = data[3]
-    conv_data['AnaIn2'] = float(data[2] + 256 * data[5]) * fac_analog
-    conv_data['AnaIn1'] = float(data[8] + 256 * data[9]) * fac_analog
-    conv_data['p']  = float(data[4] * 65536 + data[7] * 256 + data[6]) * fac_press # [0.001 dbar]
-    #print([data[10:11],data[11:12]])
-    #ba = bytearray([data[10],data[11]])
-    #print(struct.unpack('<h', ba))
-    #print(int.frombytes(ba))
-    conv_data['v1']   = float(struct.unpack('<h', data[10:12])[0]) * fac_vel
-    conv_data['v2']   = float(struct.unpack('<h', data[12:14])[0]) * fac_vel
-    conv_data['v3']   = float(struct.unpack('<h', data[14:16])[0]) * fac_vel
-    conv_data['a1']   = float(data[16]) # amplitude beam1 (counts)
-    conv_data['a2']   = float(data[17]) # amplitude beam2 (counts)
-    conv_data['a3']   = float(data[18]) # amplitude beam3 (counts)
-    conv_data['c1']   = float(data[19]) # correlation beam1 (%)
-    conv_data['c2']   = float(data[20]) # correlation beam2 (%)
-    conv_data['c3']   = float(data[21]) # correlation beam3 (%)
+    conv_data['AnaIn2'] = data[2] + 256 * data[5])
+    conv_data['AnaIn1'] = data[8] + 256 * data[9])
+    conv_data['p']      = data[4] * 65536 + data[7] * 256 + data[6] # [0.001 dbar]
+    conv_data['v1']     = struct.unpack('<h', data[10:12])[0]
+    conv_data['v2']     = struct.unpack('<h', data[12:14])[0]
+    conv_data['v3']     = struct.unpack('<h', data[14:16])[0]
+    conv_data['a1']     = data[16] # amplitude beam1 (counts)
+    conv_data['a2']     = data[17] # amplitude beam2 (counts)
+    conv_data['a3']     = data[18] # amplitude beam3 (counts)
+    conv_data['c1']     = data[19] # correlation beam1 (%)
+    conv_data['c2']     = data[20] # correlation beam2 (%)
+    conv_data['c3']     = data[21] # correlation beam3 (%)
 
     return conv_data
 
