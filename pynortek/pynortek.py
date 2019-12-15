@@ -6,6 +6,7 @@ import pytz
 import datetime
 import os
 import re
+from numpy import cos,sin
 
 # Get the version
 version_file = pkg_resources.resource_filename('pynortek','VERSION')
@@ -13,6 +14,40 @@ version_file = pkg_resources.resource_filename('pynortek','VERSION')
 # Setup logging module
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 logger = logging.getLogger('pynortek')
+
+def xyz2enu(u,v,w,head,pitch,roll,inverse=False):
+    """Transforms volcities in XYZ coordinates to ENU, or vice versa if
+    inverse=True. Transformation is done according to the Nortek
+    convention
+    """
+    # convert to radians
+    hh = np.pi*(head-90)/180
+    pp = np.pi*pitch/180
+    rr = np.pi*roll/180
+
+    ut = np.NaN(shape(u))
+    vt = np.NaN(shape(u))
+    wt = np.NaN(shape(u))    
+
+    for i in range(len(head)):
+        # generate heading matrix
+        H = np.matrix([[cos(hh[i]), sin(hh[i]), 0],[-sin(hh[i]), cos(hh[i]), 0],[0, 0, 1]])
+        # generate combined pitch and roll matrix
+        P = [[cos(pp[i]), -sin(pp[i])*sin(rr[i]), -cos(rr[i])*sin(pp[i])],
+             [0,           cos(rr[i]),                       -sin(rr[i])],
+             [sin(pp[i]),  sin(rr[i])*cos(pp[i]),  cos(pp[i])*cos(rr[i])]]
+
+        R = H*P
+        print(R)
+        if(inverse):
+            R = np.inv(R)
+
+        # do transformation
+        ut[i]  = R[0,0]*u[i] + R[0,1]*v[i] + R[0,2]*w[i];
+        vt[i]  = R[1,0]*u[i] + R[1,1]*v[i] + R[1,2]*w[i];
+        wt[i]  = R[2,0]*u[i] + R[2,1]*v[i] + R[2,2]*w[i];
+
+        
 
 raw_data_files = ['.prf','.vec'] # Names of raw binary data files 
 class pynortek():
