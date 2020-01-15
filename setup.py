@@ -14,7 +14,7 @@ setup(name='pynortek',
       license='GPLv03',
       packages=['pynortek'],
       scripts = [],
-      entry_points={'console_scripts': ['pynortek_time=pynortek.nortek_time:main','pynortek_time_gui=pynortek.nortek_time:gui']},
+      entry_points={'console_scripts': ['pynortek_time=pynortek.nortek_time:main','pynortek_time_gui=pynortek.nortek_time:gui','pynortek_vec2nc=pynortek.pynortek_binary:vec2nc']},
       package_data = {'':['VERSION']},
       zip_safe=False)
 
