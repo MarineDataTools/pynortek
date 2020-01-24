@@ -438,14 +438,14 @@ package_vector_sytem = {'name':'Vec sys','sync':b'\xa5','id':b'\x11','size':28,'
 package_vector_probe_check = {'name':'Vector/Vectrino probe check','sync':b'\xa5','id':b'\x07','size':None,'sizeoff':2,'function':None}
 package_imu_data = {'name':'IMU','sync':b'\xa5','id':b'\x71','size':72,'function':convert_vector_IMU} #
 package_aquadopp_profiler = {'name':'Aquadopp Profiler velocity','sync':b'\xa5','id':b'\x21','size':None,'sizeoff':2,'function':None}
-package_aquadopp_HRprofiler = {'name':'High resolution Aquadopp Profiler velocity','sync':b'\xa5','id':b'\x2a','size':None,'function':None}
+#package_aquadopp_HRprofiler = {'name':'High resolution Aquadopp Profiler velocity','sync':b'\xa5','id':b'\x2a','size':None,'function':None}
 package_awac_profile = {'name':'Awac velocity profile','sync':b'\xa5','id':b'\x20','size':None,'sizeoff':2,'function':None}
 package_awac_wave_header = {'name':'Awac wave header','sync':b'\xa5','id':b'\x31','size':60,'function':None}
 package_awac_stage = {'name':'Awac stage data','sync':b'\xa5','id':b'\x42','size':None,'sizeoff':2,'function':None}
 package_awac_wave = {'name':'Awac wave data','sync':b'\xa5','id':b'\x30','size':24,'function':None}
 package_awac_wave_suv = {'name':'Awac wave data for suv','sync':b'\xa5','id':b'\x36','size':24,'function':None}
 
-packages = [package_aquadopp_velocity,
+nortek_packages = [package_aquadopp_velocity,
             package_user_configuration,            
             package_hardware_configuration,
             package_head_configuration,            
@@ -456,7 +456,7 @@ packages = [package_aquadopp_velocity,
             package_vector_probe_check,
             package_imu_data,
             package_aquadopp_profiler,
-            package_aquadopp_HRprofiler,
+            #package_aquadopp_HRprofiler,
             package_awac_profile,
             package_awac_wave_header,
             package_awac_stage,
@@ -476,20 +476,23 @@ def convert_bin(data, apply_unit_factor = False, statistics = False):
     if(statistics):
         statistic_dict = {}
         statistic_dict['packages'] = []
-        statistic_dict['package_names'] = []        
-        for npi,package in enumerate(packages):
+        statistic_dict['package_names'] = []
+        statistic_dict['package_num'] = []                
+        for npi,package in enumerate(nortek_packages):
             statistic_dict['package_names'].append(package['name'])
+            statistic_dict['package_num'].append(0)            
             
     while i < (len(data)-1):
         d1 = data[i:i+1]
         d2 = data[i+1:i+2]        
         #print(i,d1,d2)
         FOUND_PACKAGE = False
-        for npi,package in enumerate(packages):
+        for npi,package in enumerate(nortek_packages):
             if((d1 == package['sync']) and (d2 == package['id']) and (FOUND_PACKAGE == False)):
                 if package['size'] is not None:
                     psize = package['size']
                 else:
+                    print('Package:',package)
                     offset = i+package['sizeoff']
                     if((i+offset) < len(data)): # Do we have enough data for the package?                    
                         psize = int.from_bytes(data[offset:offset+2], byteorder='little')
@@ -501,6 +504,8 @@ def convert_bin(data, apply_unit_factor = False, statistics = False):
                     data_package = data[i:i+psize]
                     if(statistics):                    
                         statistic_dict['packages'].append([i,i+psize,npi])
+                        statistic_dict['package_num'][npi] += 1
+                        
                     checksum = int.from_bytes(data[i+psize-2:i+psize], byteorder='little')
                     checksum_calc = calc_checksum(data[i:i+psize-2])
                     FLAG_CHECKSUM=False
@@ -586,7 +591,7 @@ def add_timestamp(packages,num_dates = 2):
             date0 = packages[idate0]['date']
             date1 = packages[idate1]['date']                
             ind_vel = idate_vel[(idate_vel >= idate0) & (idate_vel <= (idate1))]
-            ind_imu = idate_vel[(idate_imu >= idate0) & (idate_imu <= (idate1))]            
+            ind_imu = idate_imu[(idate_imu >= idate0) & (idate_imu <= (idate1))]            
             #print('ind',idate0,idate1,min(ind_vel),max(ind_vel))
             dt = (date1 - date0).total_seconds()
             # A time package should be there every second
@@ -854,15 +859,26 @@ def find_time_range(fname):
         if(p['name'] == 'IMU'):
             HAS_IMU = True
 
+    usr_cfg = None
+    hw_cfg = None
+    head_cfg = None
     for p in package_data_start['packages']:
         if(p['name'] == 'Vec sys'):
             dates.append(p['date'])
 
+        if(p['name'] == 'user config'):
+            usr_cfg = p
+        if(p['name'] == 'hardware config'):
+            hw_cfg   = p
+        if(p['name'] == 'head config'):
+            head_cfg = p
+        
     for p in package_data_end['packages']:
         if(p['name'] == 'Vec sys'):
             dates.append(p['date'])
 
-    ret_data = {'fname':fname,'first':min(dates),'last':max(dates),'IMU':HAS_IMU,'fsize':fsize}
+
+    ret_data = {'fname':fname,'first':min(dates),'last':max(dates),'IMU':HAS_IMU,'fsize':fsize,'usr_cfg':usr_cfg,'hw_cfg':hw_cfg,'head_cfg':head_cfg}
     return ret_data
 
 
@@ -910,6 +926,7 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*500, nbytes=None):
         f = open(fname,'rb')
         chunk = chunksize
         statistics_all = np.zeros((0,3))
+        statistics_num_packages = np.zeros((len(nortek_packages)))
         package_all  = []
         package_tmp  = []
         bytes_read = 0        
@@ -924,8 +941,8 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*500, nbytes=None):
             #if(offset/1000/1000 > 20): # In MB
             #    print('Reading only a part')
             #    break
-            print(str(bytes_read/1000/1000) + ' MB of file with size ' + str(fsize/1000/1000) + ' MB')
-            print(str(bytes_read_total/1000/1000) + ' MB of all files with total size ' + str(fsize_total/1000/1000) + ' MB')
+            print(str(bytes_read/1000/1000) + ' MB of file with size ' + '{:5.9f}'.format(fsize/1000/1000) + ' MB')
+            print(str(bytes_read_total/1000/1000) + ' MB of all files with total size ' + '{:5.9f}'.format(fsize_total/1000/1000) + ' MB')
             # Only read part of the dataset
             if(nbytes is not None):
                 if(bytes_read_total >= nbytes):
@@ -943,8 +960,11 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*500, nbytes=None):
             statistics       = np.asarray(statistics)
             statistics[:,0] += offset
             statistics[:,1] += offset
+            num_packages       = package_data['statistics']['package_num']
+            num_packages       = np.asarray(num_packages)            
             #print(np.shape(statistics),np.shape(statistics_all))
-            statistics_all   = np.vstack((statistics_all,statistics))
+            statistics_all           = np.vstack((statistics_all,statistics))
+            statistics_num_packages += num_packages
             package_tmp.extend(package_data['packages'])
             HAVETIME = False
             if(len(package_tmp)>0):
@@ -979,6 +999,13 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*500, nbytes=None):
                     package_tmp  = package_tmp[isave:]
                     #package_all.extend(package_save)
                     #print('Saving data to nc file',len(package_save))
+                    #print('Statistics',statistics_num_packages)
+                    # Print statistics of packages
+                    print('Packages read:')
+                    for npi,pack in enumerate(nortek_packages):
+                        if statistics_num_packages[npi] > 0:
+                            print(pack['name'] + ': ' + str(int(statistics_num_packages[npi])))
+                            
                     add_packages_to_netcdf(dataset,package_save)
 
 
@@ -990,22 +1017,41 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*500, nbytes=None):
     dataset.close()
 
 
+def vecinfo(fnames_in):
+    """ Prints useful information of a Nortek .vec binary file
+    """
+    if(type(fnames_in) == str):
+        fnames_in = [fnames_in]
+        
+    for fname in fnames_in:
+        drange = find_time_range(fname)
+        print('First',drange['first'])
+        print('Last',drange['last'])        
+        print('User config')
+        print(drange['usr_cfg'])
+        print('Head config')
+        print(drange['head_cfg'])
+        print('Hardware config')
+        print(drange['hw_cfg'])                
+
 def vec2nc():
     """ A function call for a command line based conversion of a .vec file to a netCDF file. Basically a wrapper for bin2nc
     """
     in_help         = 'One or more Nortek Vector binary file(s) (filename.VEC)'
     nc_help         = 'Name of the netCDF output file (typically filename.nc)'
     nbytes_help     = 'Read only number of bytes of the total length of all datasets'
+    info_help       = 'Prints useful information about files'
     parser = argparse.ArgumentParser(description='Convert a Nortek .VEC file binary Vector file into netCDF file')
     parser.add_argument('--version', action='version', version='%(prog)s ' + version)
     parser.add_argument('--nbytes', help=nbytes_help)
+    parser.add_argument('--info', action='store_true', help=info_help)    
     parser.add_argument('filename_bin',nargs='+',help=in_help)
     parser.add_argument('filename_nc',help=nc_help)        
     args = parser.parse_args()
 
     filename_bin = args.filename_bin
     filename_nc = args.filename_nc
-
+    print('Hallo!')
     print(filename_bin)
     print(filename_nc)
     print(args.nbytes)
@@ -1015,4 +1061,15 @@ def vec2nc():
     else:
         nbytes = None
 
-    bin2nc(filename_bin,filename_nc,nbytes = nbytes)
+    # Just print information
+    if(args.info):
+        vecinfo(filename_bin)
+        return
+
+    if(filename_nc is not None):
+        if(os.path.isfile(filename_nc) ):
+            print('Target nc file is existing, will quit now')
+            return
+
+        print('Start converting file(s)')
+        bin2nc(filename_bin,filename_nc,nbytes = nbytes)
