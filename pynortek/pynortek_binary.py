@@ -9,6 +9,7 @@ import re
 import struct
 import netCDF4
 import argparse
+import time
 
 # Get the version
 version_file = pkg_resources.resource_filename('pynortek','VERSION')
@@ -159,13 +160,30 @@ def convert_vector_system_data(data,apply_unit_factor = False,units = False,scal
 def convert_vector_velocity_header(data,apply_unit_factor = False, scaling = 1.0):
     """ Converts binary data in a vector velocity data structure
     """
-    pass
+    conv_data = {}
+    conv_data['minute']       = (data[4] & 0x0F) + 10 * ((data[4] >> 4) & 0x0F)
+    conv_data['second']       = (data[5] & 0x0F) + 10 * ((data[5] >> 4) & 0x0F)
+    conv_data['day']          = (data[6] & 0x0F) + 10 * ((data[6] >> 4) & 0x0F)
+    conv_data['hour']         = (data[7] & 0x0F) + 10 * ((data[7] >> 4) & 0x0F)
+    conv_data['year']         = (data[8] & 0x0F) + 10 * ((data[8] >> 4) & 0x0F) + 2000
+    conv_data['month']        = (data[9] & 0x0F) + 10 * ((data[9] >> 4) & 0x0F)
+    conv_data['date']         = datetime.datetime(conv_data['year'],conv_data['month'],conv_data['day'],conv_data['hour'],conv_data['minute'],conv_data['second'])    
+    conv_data['NRecords']          = struct.unpack('<H', data[10:12])[0] # Little endian
+    return conv_data
     #print('Vector velocity header')
     #print(data)
     #print('End Vectir velocity header')
 
+def convert_vector_vectrino_probe_check(data,apply_unit_factor = False, scaling = 1.0):
+    """ 
+    """
+    pass
+    #print('Vector velocity header')
+    #print(data)
+    #print('End Vectir velocity header')    
 
-def convert_vector_IMU(data,apply_unit_factor = False,units = False, scaling = 1.0):
+
+def convert_vector_IMU(data,apply_unit_factor = False,units = False, scaling = 1.0,burst_info = 0):
     """ Converts binary data in a vector velocity data structure
     """
     conv_data = {}
@@ -193,6 +211,8 @@ def convert_vector_IMU(data,apply_unit_factor = False,units = False, scaling = 1
         conv_data['units']['roll']        = 'Roll [deg]'
         conv_data['units']['yaw']         = 'Yaw [deg]'
         conv_data['units']['timer'] = 'Timer value, measures the time since start of each burst. To convert the timer value to time in seconds, divide by 62,500.'
+        conv_data['units']['burst']  = 'Burst number (calculated by pynortek)'
+        conv_data['units']['burstsample']  = 'The sample number within the burst (calculated by pynortek)'
         conv_data['dtype']['EnsCnt']      = 'i'
         conv_data['dtype']['AHRSId']      = 'i'
         conv_data['dtype']['DeltaAngleX'] = 'f'
@@ -213,7 +233,9 @@ def convert_vector_IMU(data,apply_unit_factor = False,units = False, scaling = 1
         conv_data['dtype']['timer']       = 'i'
         conv_data['dtype']['pitch']       = 'f'
         conv_data['dtype']['roll']        = 'f'
-        conv_data['dtype']['yaw']         = 'f'                        
+        conv_data['dtype']['yaw']         = 'f'
+        conv_data['dtype']['burst']       = 'i'
+        conv_data['dtype']['burstsample'] = 'i'                        
         return conv_data
     
     conv_data['EnsCnt'] = data[4]
@@ -237,9 +259,12 @@ def convert_vector_IMU(data,apply_unit_factor = False,units = False, scaling = 1
     conv_data['roll']  = np.arctan2(conv_data['M23'],conv_data['M33'])/2/np.pi*360
     conv_data['yaw']   = np.arctan2(conv_data['M12'],conv_data['M11'])/2/np.pi*360
     conv_data['timer'] = struct.unpack('<i', data[66:70])[0] # Little endian
+    conv_data['burst_num']         = burst_info[0]
+    conv_data['burst_sample']      = burst_info[1]
+    conv_data['burst_startdate']   = burst_info[2]    
     return conv_data
 
-def convert_vector_velocity(data,apply_unit_factor = False,units = False, scaling = 1.0):
+def convert_vector_velocity(data,apply_unit_factor = False,units = False, scaling = 1.0,burst_info = 0):
     """ Converts binary data in a vector velocity data structure
     """
     #print('Vector velocity data')
@@ -261,6 +286,8 @@ def convert_vector_velocity(data,apply_unit_factor = False,units = False, scalin
         conv_data['units']['c1']     = 'correlation beam1 (%)'
         conv_data['units']['c2']     = 'correlation beam2 (%)'
         conv_data['units']['c3']     = 'correlation beam3 (%)'
+        conv_data['units']['burst']  = 'Burst number (calculated by pynortek)'
+        conv_data['units']['burstsample']  = 'The sample number within the burst (calculated by pynortek)'        
         conv_data['dtype']['Count']  = 'i'
         conv_data['dtype']['AnaIn2'] = 'i'
         conv_data['dtype']['AnaIn1'] = 'i'
@@ -274,6 +301,8 @@ def convert_vector_velocity(data,apply_unit_factor = False,units = False, scalin
         conv_data['dtype']['c1']     = 'i'
         conv_data['dtype']['c2']     = 'i'
         conv_data['dtype']['c3']     = 'i'
+        conv_data['dtype']['burst']  = 'i'
+        conv_data['dtype']['burstsample']  = 'i'                
         return conv_data
         
 
@@ -290,6 +319,9 @@ def convert_vector_velocity(data,apply_unit_factor = False,units = False, scalin
     conv_data['c1']     = data[19] # correlation beam1 (%)
     conv_data['c2']     = data[20] # correlation beam2 (%)
     conv_data['c3']     = data[21] # correlation beam3 (%)
+    conv_data['burst_num']         = burst_info[0]
+    conv_data['burst_sample']      = burst_info[1]
+    conv_data['burst_startdate']   = burst_info[2]
 
     return conv_data
 
@@ -424,6 +456,18 @@ def convert_usr_conf(data,apply_unit_factor = False, scaling = 1.0):
     conv_data['QualConst'] = data[494:494+16]
     conv_data['units']['QualConst'] = 'stage match filter constants (EZQ)'        
 
+    # Pynortek decoded for convenience
+    if(conv_data['TimCtrlReg'] & 1): # bit one
+        conv_data['sampling_mode'] = 'continous'
+    else:
+        conv_data['sampling_mode'] = 'burst'
+
+    if(conv_data['CoordSystem'] == 0):
+        conv_data['coordinate_system'] = 'ENU'
+    elif(conv_data['CoordSystem'] == 1):
+        conv_data['coordinate_system'] = 'XYZ'
+    elif(conv_data['CoordSystem'] == 2):
+        conv_data['coordinate_system'] = 'BEAM'                
     return conv_data
 
 # The packages
@@ -435,7 +479,7 @@ package_aquadopp_diagnostics_header = {'name':'Aquadopp diagnostics header','syn
 package_vector_velocity_header = {'name':'Vector velocity header','sync':b'\xa5','id':b'\x12','size':42,'function':convert_vector_velocity_header} #
 package_vector_velocity = {'name':'Vec vel','sync':b'\xa5','id':b'\x10','size':24,'function':convert_vector_velocity} #
 package_vector_sytem = {'name':'Vec sys','sync':b'\xa5','id':b'\x11','size':28,'function':convert_vector_system_data} #
-package_vector_probe_check = {'name':'Vector/Vectrino probe check','sync':b'\xa5','id':b'\x07','size':None,'sizeoff':2,'function':None}
+package_vector_probe_check = {'name':'Vector/Vectrino probe check','sync':b'\xa5','id':b'\x07','size':None,'sizeoff':2,'function':convert_vector_vectrino_probe_check}
 package_imu_data = {'name':'IMU','sync':b'\xa5','id':b'\x71','size':72,'function':convert_vector_IMU} #
 package_aquadopp_profiler = {'name':'Aquadopp Profiler velocity','sync':b'\xa5','id':b'\x21','size':None,'sizeoff':2,'function':None}
 #package_aquadopp_HRprofiler = {'name':'High resolution Aquadopp Profiler velocity','sync':b'\xa5','id':b'\x2a','size':None,'function':None}
@@ -465,12 +509,12 @@ nortek_packages = [package_aquadopp_velocity,
 
 
 
-def convert_bin(data, apply_unit_factor = False, statistics = False):
+def convert_bin(data, apply_unit_factor = False, statistics = True, burst_num=0,burst_sample=0,burst_startdate=0):
     """ Converts a binary data stream into a list of packages (dictionaries)
+    offset: The offset of the binary data given with respect to the whole datastream
     """
     scaling = np.NaN # The scaling of the data (depends on the status bit in the system package
     conv_data_all = []
-    #for i in range(len(data)-1):
     i = 0
     ilast = 0 # Index after of the last found package
     if(statistics):
@@ -487,24 +531,23 @@ def convert_bin(data, apply_unit_factor = False, statistics = False):
         d2 = data[i+1:i+2]        
         #print(i,d1,d2)
         FOUND_PACKAGE = False
+        # loop through all known nortek packages and compore sync/id, if one found, call the function associated with that package
         for npi,package in enumerate(nortek_packages):
             if((d1 == package['sync']) and (d2 == package['id']) and (FOUND_PACKAGE == False)):
                 if package['size'] is not None:
                     psize = package['size']
                 else:
-                    print('Package:',package)
+                    #print('Package:',package)
                     offset = i+package['sizeoff']
                     if((i+offset) < len(data)): # Do we have enough data for the package?                    
                         psize = int.from_bytes(data[offset:offset+2], byteorder='little')
-                        print('Size read:',psize)
+                        #print('Size read:',psize)
                     else:
                         break
 
                 if((i+psize) < len(data)): # Do we have enough data for the package?
                     data_package = data[i:i+psize]
-                    if(statistics):                    
-                        statistic_dict['packages'].append([i,i+psize,npi])
-                        statistic_dict['package_num'][npi] += 1
+
                         
                     checksum = int.from_bytes(data[i+psize-2:i+psize], byteorder='little')
                     checksum_calc = calc_checksum(data[i:i+psize-2])
@@ -512,12 +555,38 @@ def convert_bin(data, apply_unit_factor = False, statistics = False):
                     if(checksum == checksum_calc):
                         FLAG_CHECKSUM=True
 
+
+                        
+                        
                     # Convert the data
                     if package['function'] is not None:
-                        conv_data = package['function'](data_package, apply_unit_factor = apply_unit_factor, scaling = scaling)
+                        # Add the burst to the velocity package
+                        if(package['name'] == 'Vec vel' or package['name'] == 'IMU'):
+                            conv_data = package['function'](data_package, apply_unit_factor = apply_unit_factor, scaling = scaling, burst_info = [burst_num,burst_sample,burst_startdate])
+                            burst_sample += 1
+                        else:
+                            conv_data = package['function'](data_package, apply_unit_factor = apply_unit_factor, scaling = scaling)
+
                     else:
                         print('No function available for package:' + package['name'])
-                        #conv_data = None
+                        conv_data = None
+
+                    # New burst
+                    if(package['name'] == 'Vector velocity header'):
+                        burst_num += 1 # The burst number
+                        burst_sample = 0 # Count the burst sample number
+                        burst_startdate = conv_data['date']
+                        #print('Nrecords',conv_data['NRecords'])
+                        #print('Date',conv_data['date'])                        
+
+                    if(statistics):
+                        try:
+                            stat_date = conv_data['date']
+                        except:
+                            stat_date = None
+                        statistic_dict['packages'].append([i,i+psize,npi,stat_date])
+                        statistic_dict['package_num'][npi] += 1
+
 
                     # Add name and sync/id
                     if(conv_data == None):
@@ -544,7 +613,7 @@ def convert_bin(data, apply_unit_factor = False, statistics = False):
         if(FOUND_PACKAGE == False): # Try next byte
             i += 1
 
-    ret_dict = {'packages':conv_data_all, 'ilast':ilast,'data_rest':data[ilast:]}
+    ret_dict = {'packages':conv_data_all, 'ilast':ilast,'data_rest':data[ilast:],'burst_num':burst_num,'burst_sample':burst_sample,'burst_startdate':burst_startdate}
     if(statistics):
         ret_dict['statistics'] = statistic_dict
         
@@ -585,6 +654,7 @@ def add_timestamp(packages,num_dates = 2):
     idate_imu = np.asarray(idate_imu)
     idate_vel = np.asarray(idate_vel)
     for i in range(len(idate_sys)):
+        #print('fdsfds')
         if(len(idate_sys) > (i+num_dates)): # Do we have enough dates?
             idate0 = idate_sys[i]
             idate1 = idate_sys[i+num_dates]
@@ -600,17 +670,20 @@ def add_timestamp(packages,num_dates = 2):
             # after idate0
             if(len(ind_vel)>0): 
                 dt_vel = dt/len(ind_vel)
-                #print('dt',dt,len(ind_vel),dt_vel)                
-                for itmp,iv in enumerate(ind_vel):
-                    date_vel = date0 + itmp * datetime.timedelta(seconds=dt_vel)
-                    packages[iv]['date'] = date_vel
+                #print('dt',dt,len(ind_vel),dt_vel)
+                if(dt < (num_dates + 0.1)): # each time package should only be a second away
+                    for itmp,iv in enumerate(ind_vel):
+                        date_vel = date0 + itmp * datetime.timedelta(seconds=dt_vel)
+                        packages[iv]['date'] = date_vel
+                else:
+                    print('Time difference too big')
 
 
                     
             # Add timestamps to IMU package
             if(len(ind_imu)>0): # We found more than one package
                 dt_imu = dt/len(ind_imu)
-                #print('dt_imu',dt_imu)
+                #print('dt_imu',len(ind_imu),dt_imu)
                 for itmp,iv in enumerate(ind_imu):
                     date_imu = date0 + itmp * datetime.timedelta(seconds=dt_imu)
                     packages[iv]['date'] = date_imu
@@ -620,8 +693,21 @@ def add_timestamp(packages,num_dates = 2):
 
     return packages
 
+def add_timestamp_burst(packages,samplingrate):
+    dt = datetime.timedelta(seconds=1.0/samplingrate)
+    for i,p in enumerate(packages):
+        p = packages[i]
+        if(p['name'] == 'IMU'): # An IMU package
+            date = packages[i]['burst_startdate'] + packages[i]['burst_sample'] * dt
+            packages[i]['date'] = date
+        if(p['name'] == 'Vec vel'): # A velocity package
+            date = packages[i]['burst_startdate'] + packages[i]['burst_sample'] * dt
+            packages[i]['date'] = date
 
 
+
+
+    return packages
 
 
 def create_netcdf(fname, vel=True, imu=True):
@@ -677,6 +763,8 @@ def add_packages_to_netcdf(dataset,packages):
     c1_tmp = []
     c2_tmp = []
     c3_tmp = []
+    burst_tmp = []
+    burstsample_tmp = []        
     Count_tmp = []    
     ana1_tmp = []
     ana2_tmp = []
@@ -704,6 +792,8 @@ def add_packages_to_netcdf(dataset,packages):
     yaw_tmp = []
     roll_tmp = []
     imutimer_tmp = []
+    burstIMU_tmp = []
+    burstsampleIMU_tmp = []            
     
     for i,p in enumerate(packages):
         if(p['name'] == 'Vec sys'): # Vector system data
@@ -744,6 +834,8 @@ def add_packages_to_netcdf(dataset,packages):
             c1_tmp.append(p['c1'])
             c2_tmp.append(p['c2'])
             c3_tmp.append(p['c3'])
+            burst_tmp.append(p['burst_num'])
+            burstsample_tmp.append(p['burst_sample'])                        
             Count_tmp.append(p['Count'])            
             ana1_tmp.append(p['AnaIn1'])
             ana2_tmp.append(p['AnaIn2'])
@@ -785,6 +877,8 @@ def add_packages_to_netcdf(dataset,packages):
             yaw_tmp.append(p['yaw'])
             roll_tmp.append(p['roll'])
             imutimer_tmp.append(p['timer'])
+            burstIMU_tmp.append(p['burst_num'])
+            burstsampleIMU_tmp.append(p['burst_sample'])                                    
 
     # Fill the velocities
     n = len(velgrp.variables['count'])
@@ -799,6 +893,8 @@ def add_packages_to_netcdf(dataset,packages):
     velgrp.variables['c1'][n:nn] = c1_tmp
     velgrp.variables['c2'][n:nn] = c2_tmp
     velgrp.variables['c3'][n:nn] = c3_tmp
+    velgrp.variables['burst'][n:nn] = burst_tmp
+    velgrp.variables['burstsample'][n:nn] = burstsample_tmp        
     velgrp.variables['Count'][n:nn] = Count_tmp    
     velgrp.variables['AnaIn1'][n:nn] = ana1_tmp
     velgrp.variables['AnaIn2'][n:nn] = ana2_tmp
@@ -828,7 +924,25 @@ def add_packages_to_netcdf(dataset,packages):
         imugrp.variables['M33'][n:nn]   = M33_tmp
         imugrp.variables['pitch'][n:nn] = pitch_tmp 
         imugrp.variables['roll'][n:nn]  = roll_tmp 
-        imugrp.variables['yaw'][n:nn]   = yaw_tmp 
+        imugrp.variables['yaw'][n:nn]   = yaw_tmp
+        imugrp.variables['burst'][n:nn] = burstIMU_tmp
+        imugrp.variables['burstsample'][n:nn] = burstsampleIMU_tmp                
+
+def print_user_config(usr_cfg,device='vector'):
+    print('Sampling mode: ' + usr_cfg['sampling_mode'])
+    print('T1: {:d}'.format(usr_cfg['T1']))
+    print('T2: {:d}'.format(usr_cfg['T2']))
+    print('T3: {:d}'.format(usr_cfg['T3']))
+    print('T4: {:d}'.format(usr_cfg['T4']))
+    print('T5: {:d}'.format(usr_cfg['T5']))
+    print('NPings: {:d}'.format(usr_cfg['NPings']))    
+    print('Coordinate System: {:s}'.format(usr_cfg['coordinate_system']))
+    print('MeasInterval: {:d} s'.format(usr_cfg['MeasInterval']))       
+    if(device == 'vector'):
+        samplinginterval = 512/usr_cfg['AvgInterval']
+        print('Samplinginterval: {:f} Hz'.format(samplinginterval))
+        #print('AvgInterval: {:d}'.format(usr_cfg['AvgInterval']))       
+    input('ffdsfd')
 
 
 def find_time_range(fname):
@@ -837,7 +951,6 @@ def find_time_range(fname):
     """
     fsize = os.path.getsize(fname)    
     print(fname,'size',fsize)
-
     f = open(fname,'rb')    
     chunk = 4096*10
     package_tmp  = [] 
@@ -862,6 +975,37 @@ def find_time_range(fname):
     usr_cfg = None
     hw_cfg = None
     head_cfg = None
+    # Check for number of packages between two consecutive time packages
+    t1    = None
+    tlast = None
+    tnow = None
+    dttmp = None
+    # Part to find the sampling rate
+    nvel = 0
+    nvel_imu = 0
+    for p in package_data_start['packages']:
+        if(p['name'] == 'Vec sys'):
+            if True:
+                tlast = tnow
+                tnow = p['date']
+                if(tlast is not None):
+                    dttmp = (tnow - tlast).total_seconds()
+                    #dt = (tnow - t1).total_seconds()
+                    fs = nvel/dttmp
+                    fs_imu = nvel_imu/dttmp                    
+                    nvel = 0
+                    nvel_imu = 0                    
+                    #print('fs',fs,dttmp)
+                    #print('fs_imu',fs_imu,dttmp)                    
+
+        if(p['name'] == 'IMU'):
+            if(tlast is not None):
+                nvel_imu += 1
+
+        if(p['name'] == 'Vec vel'):
+            if(tlast is not None):
+                nvel += 1
+
     for p in package_data_start['packages']:
         if(p['name'] == 'Vec sys'):
             dates.append(p['date'])
@@ -876,38 +1020,69 @@ def find_time_range(fname):
     for p in package_data_end['packages']:
         if(p['name'] == 'Vec sys'):
             dates.append(p['date'])
+            device_type = 'Vector'
 
 
-    ret_data = {'fname':fname,'first':min(dates),'last':max(dates),'IMU':HAS_IMU,'fsize':fsize,'usr_cfg':usr_cfg,'hw_cfg':hw_cfg,'head_cfg':head_cfg}
+    ret_data = {'fname':fname,'first':min(dates),'last':max(dates),'IMU':HAS_IMU,'fsize':fsize,'usr_cfg':usr_cfg,'hw_cfg':hw_cfg,'head_cfg':head_cfg,'device_type':device_type}
     return ret_data
 
 
 #def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
-def bin2nc(fnames_in,fname_nc,chunksize = 4096*500, nbytes=None):
+def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
     """ Converts binary files to a netCDF
     Arguments:
        chunksize: The number of bytes read at once
-       nbytes: The number of bytes read from file
+       nbytes: The number of bytes to be read from file
     """
+
+
+    _tstart = time.time()    
     date_ranges = []
     date_first = []
-    print('Checking times in input file(s)')
+    packages_read = 0
+    burst_num        = 0 # Bursts found
+    burst_sample     = 0 # The sample number within the burst
+    burst_startdate = datetime.datetime(1,1,1) # The burst start date
+    logger.info('This is vec2nc version ' + version)
+    logger.info('Checking times in input file(s)')
     HAS_IMU = False
     if(type(fnames_in) == str):
         fnames_in = [fnames_in]
-        
+
+    # Find the time range of all files and the configuration
     for fname in fnames_in:
         drange = find_time_range(fname)
         date_ranges.append(drange)
         date_first.append(drange['first'])
-        print(drange['fname'] + ':' + str(drange['first']) + ' - ' + str(drange['last']))
+        logger.info(drange['fname'] + ':' + str(drange['first']) + ' - ' + str(drange['last']))
         HAS_IMU = drange['IMU']
 
+    device_type = date_ranges[0]['device_type']
+    user_cfg = date_ranges[0]['usr_cfg']
+    hw_cfg = date_ranges[0]['hw_cfg']
+    head_cfg = date_ranges[0]['head_cfg']
+    # Print information 
+    logger.info('Device is ' + device_type)
+    if(device_type == 'Vector'):
+        samplingrate = 512/user_cfg['AvgInterval']
+        samplesperburst = user_cfg['B1_1']
+        logger.info('Coordinate System: {:s}'.format(user_cfg['coordinate_system']))
+        logger.info('MeasInterval: {:d} s'.format(user_cfg['MeasInterval']))               
+        logger.info('Samplingrate: {:f} Hz'.format(samplingrate))
+        logger.info('Samples per burst: {:d} '.format(samplesperburst))
+        timestampmode = 'burst' # burst or dt
+    else:
+        logger.fatal('At the moment only Vector binary files a supported, exiting now.')
+        return
+
+    #print_user_config(user_cfg)
     HAS_DATA = True # TODO: Here we can check if we have valid data (i.e. datasets and the same headers/heads/sensors
     if(HAS_DATA):
         # Create netCDF file
-        print('Creating netcdf file: ' + fname_nc)
+        logger.info('Creating netcdf file: ' + fname_nc)
         dataset = create_netcdf(fname_nc,imu=HAS_IMU)
+        logger.info('Opening a logfile')
+        fstat = open(fname_nc + '.log','w')        
     else:
         return
 
@@ -922,11 +1097,9 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*500, nbytes=None):
     for ind_sort in ind_sorted:
         fname = date_ranges[ind_sort]['fname']
         fsize = date_ranges[ind_sort]['fsize'] # file size
-        print('Opening:' + fname)        
+        logger.info('Opening:' + fname)
         f = open(fname,'rb')
         chunk = chunksize
-        statistics_all = np.zeros((0,3))
-        statistics_num_packages = np.zeros((len(nortek_packages)))
         package_all  = []
         package_tmp  = []
         bytes_read = 0        
@@ -941,48 +1114,65 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*500, nbytes=None):
             #if(offset/1000/1000 > 20): # In MB
             #    print('Reading only a part')
             #    break
-            print(str(bytes_read/1000/1000) + ' MB of file with size ' + '{:5.9f}'.format(fsize/1000/1000) + ' MB')
-            print(str(bytes_read_total/1000/1000) + ' MB of all files with total size ' + '{:5.9f}'.format(fsize_total/1000/1000) + ' MB')
-            # Only read part of the dataset
-            if(nbytes is not None):
-                if(bytes_read_total >= nbytes):
-                    print('Number of bytes read threshold reached')
-                    break
-            if(len(data) < chunk):
-                break
+            logger.info(str(bytes_read/1000/1000) + ' MB of file with size ' + '{:5.9f}'.format(fsize/1000/1000) + ' MB')
+            logger.info(str(bytes_read_total/1000/1000) + ' MB of all files with total size ' + '{:5.9f}'.format(fsize_total/1000/1000) + ' MB')
             if(i > 0):
                 data = package_data['data_rest'] + data
 
             # Convert the data
-            package_data     = convert_bin(data,statistics = True)
+            package_data     = convert_bin(data,statistics = True,burst_num=burst_num,burst_sample=burst_sample,burst_startdate=burst_startdate)
+            burst_num        = package_data['burst_num'] # update the bursts
+            burst_sample     = package_data['burst_sample'] # update the bursts
+            burst_startdate = package_data['burst_startdate'] # update the bursts                        
             ilast            = package_data['ilast']
             statistics       = package_data['statistics']['packages']
             statistics       = np.asarray(statistics)
             statistics[:,0] += offset
             statistics[:,1] += offset
-            num_packages       = package_data['statistics']['package_num']
-            num_packages       = np.asarray(num_packages)            
-            #print(np.shape(statistics),np.shape(statistics_all))
-            statistics_all           = np.vstack((statistics_all,statistics))
-            statistics_num_packages += num_packages
+            # Get the configuration, if wanted
+            try:
+                package_data['config']['user']
+            except:
+                pass
+            # Writing the data to file statistics.dat
+            if True:
+                for k in range(len(package_data['statistics']['packages'])):
+                    packnum = package_data['statistics']['packages'][k][2]
+                    binoff  = package_data['statistics']['packages'][k][0]
+                    packname = package_data['statistics']['package_names'][packnum]
+                    #print(packname)
+                    # Get the date of a sys package
+                    stat_date = package_data['statistics']['packages'][k][3]
+                    if(stat_date is not None):
+                        dstr = str(stat_date)
+                    else:
+                        dstr = ''
+                    fstr = '{:010d} {:010d} {:s} {:s}\n'.format(packages_read + k,binoff + offset, packname,dstr)
+                    fstat.write(fstr)
+
+            packages_read   += len(package_data['statistics']['packages'])
+            
             package_tmp.extend(package_data['packages'])
             HAVETIME = False
             if(len(package_tmp)>0):
-                # Go backwards thorugh the new packages and search
-                # for the first one with a timestamp, if found
-                # take the packages from that package onwards                
-                for itmp in range(len(package_tmp)-1,-1,-1):
-                    p = package_tmp[itmp]
-                    if(p['name'] == 'Vec vel'): 
-                        try:
-                            p['date']
-                            HAVETIME = True
-                        except:
-                            HAVETIME = False
-                    
-                    if(HAVETIME or (itmp == 0)):
-                        package_tmp[itmp:] = add_timestamp(package_tmp[itmp:],num_dates = 2)
-                        break
+                if timestampmode == 'burst':
+                    package_tmp = add_timestamp_burst(package_tmp, samplingrate)
+                elif timestampmode == 'dt':
+                    # Go backwards through the new packages and search
+                    # for the first one with a timestamp, if found
+                    # take the packages from that package onwards                
+                    for itmp in range(len(package_tmp)-1,-1,-1):
+                        p = package_tmp[itmp]
+                        if(p['name'] == 'Vec vel'): 
+                            try:
+                                p['date']
+                                HAVETIME = True
+                            except:
+                                HAVETIME = False
+
+                        if(HAVETIME or (itmp == 0)):
+                            package_tmp[itmp:] = add_timestamp(package_tmp[itmp:],num_dates = 2)
+                            break
                     
                 # Adding the packages to netcdf
                 for isave in range(len(package_tmp)-1,-1,-1): # Put only datasets with timestamp
@@ -997,24 +1187,35 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*500, nbytes=None):
                 if(isave > 0):
                     package_save = package_tmp[:isave]
                     package_tmp  = package_tmp[isave:]
-                    #package_all.extend(package_save)
-                    #print('Saving data to nc file',len(package_save))
-                    #print('Statistics',statistics_num_packages)
-                    # Print statistics of packages
-                    print('Packages read:')
-                    for npi,pack in enumerate(nortek_packages):
-                        if statistics_num_packages[npi] > 0:
-                            print(pack['name'] + ': ' + str(int(statistics_num_packages[npi])))
-                            
+                    logger.info('Packages read {:010d}, writing to nc'.format(packages_read))
                     add_packages_to_netcdf(dataset,package_save)
+                    logger.info('nc write done')
 
 
+            # Check if more data must be read or if loop stops
+            # Only read part of the dataset
+            if(nbytes is not None):
+                if(bytes_read_total >= nbytes):
+                    print('Number of bytes read threshold reached')
+                    break
+            if(bytes_read_total >= fsize):
+                print('End of file reached')
+                break                
+            #if(len(data) < chunk):
+            #    print('too small for chunk')
+            #    break
             i += 1
 
-        print('Closing file')
+        logger.info('Closing file')
         f.close()
         
     dataset.close()
+    if True: # Close statistics file
+        fstat.close()
+
+    _tdone = time.time()
+    dt_nc = _tdone - _tstart
+    logger.info('Conversion took {:f} seconds.'.format(dt_nc))
 
 
 def vecinfo(fnames_in):
