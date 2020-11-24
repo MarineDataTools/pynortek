@@ -710,6 +710,30 @@ def add_timestamp_burst(packages,samplingrate):
     return packages
 
 
+def add_timestamp_sys(packages,samplingrate,burst_sample=-10e6,burstIMU_sample=-10e6,date_sys=datetime.datetime(1,1,1)):
+    """ Uses the time in the sys packages to calculate the time stamps
+    """
+    dt = datetime.timedelta(seconds=1.0/samplingrate)
+    for i,p in enumerate(packages):
+        if(p['name'] == 'Vec sys'): # A time stamp package
+            burst_sample = 0
+            burstIMU_sample = 0            
+            date_sys = p['date']
+        if(p['name'] == 'IMU'): # An IMU package
+            packages[i]['burst_sample'] = burstIMU_sample
+            date = date_sys + packages[i]['burst_sample'] * dt
+            packages[i]['date'] = date
+            burstIMU_sample += 1            
+        if(p['name'] == 'Vec vel'): # A velocity package
+            packages[i]['burst_sample'] = burst_sample            
+            date = date_sys + packages[i]['burst_sample'] * dt            
+            packages[i]['date'] = date
+            burst_sample += 1
+
+
+    return {'packages':packages,'timeinfo':[date_sys,burst_sample,burstIMU_sample]}
+
+
 def create_netcdf(fname, vel=True, imu=True):
     print('Creating netcdf with IMU:' + str(imu))
     zlib = True # compression
@@ -1066,11 +1090,20 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
     if(device_type == 'Vector'):
         samplingrate = 512/user_cfg['AvgInterval']
         samplesperburst = user_cfg['B1_1']
+        logger.info('Sampling mode: ' + user_cfg['sampling_mode'])
         logger.info('Coordinate System: {:s}'.format(user_cfg['coordinate_system']))
         logger.info('MeasInterval: {:d} s'.format(user_cfg['MeasInterval']))               
         logger.info('Samplingrate: {:f} Hz'.format(samplingrate))
         logger.info('Samples per burst: {:d} '.format(samplesperburst))
-        timestampmode = 'burst' # burst or dt
+        if(samplesperburst > 0):
+            logger.info('Using burst mode for computing timestamps')
+            timestampmode = 'burst' # burst or dt
+        else:
+            logger.info('This is a continous mode, using sys mode for computing timestamps')
+            timestampmode = 'sys' # burst or dt
+            sysburst_sample = 0
+            sysburstIMU_sample = 9
+            date_sys = datetime.datetime(1,1,1)
     else:
         logger.fatal('At the moment only Vector binary files a supported, exiting now.')
         return
@@ -1082,7 +1115,9 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
         logger.info('Creating netcdf file: ' + fname_nc)
         dataset = create_netcdf(fname_nc,imu=HAS_IMU)
         logger.info('Opening a logfile')
-        fstat = open(fname_nc + '.log','w')        
+        fstat = open(fname_nc + '.log','w')
+        logger.info('Opening a timestamp debug logfile')
+        ftime = open(fname_nc + '.timestamp.log','w')                
     else:
         return
 
@@ -1157,6 +1192,16 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
             if(len(package_tmp)>0):
                 if timestampmode == 'burst':
                     package_tmp = add_timestamp_burst(package_tmp, samplingrate)
+                if timestampmode == 'sys':
+                    #def add_timestamp_sys(packages,samplingrate,burst_sample=-10e6,burstIMU_sample=-10e6,date_sys=datetime.datetime(1,1,1)):
+                    #return {'packages':packages,'timeinfo':[date_sys,burst_sample,burstIMU_sample]}                                        
+                    timestampdata = add_timestamp_sys(package_tmp, samplingrate,sysburst_sample,sysburstIMU_sample,date_sys)
+                    date_sys = timestampdata['timeinfo'][0]                    
+                    sysburst_sample = timestampdata['timeinfo'][1]
+                    sysburstIMU_sample = timestampdata['timeinfo'][2]
+    
+                    package_tmp = timestampdata['packages']
+                    
                 elif timestampmode == 'dt':
                     # Go backwards through the new packages and search
                     # for the first one with a timestamp, if found
@@ -1173,7 +1218,17 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
                         if(HAVETIME or (itmp == 0)):
                             package_tmp[itmp:] = add_timestamp(package_tmp[itmp:],num_dates = 2)
                             break
-                    
+
+
+                # Writing a timestamp debug file
+                for p in package_tmp:
+                    try:
+                        dstr = p['name'] + '\t ' + str(p['date'])
+                    except:
+                        dstr = p['name']
+
+                    dstr += '\n'
+                    ftime.write(dstr)
                 # Adding the packages to netcdf
                 for isave in range(len(package_tmp)-1,-1,-1): # Put only datasets with timestamp
                     p = package_tmp[isave]
@@ -1212,6 +1267,9 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
     dataset.close()
     if True: # Close statistics file
         fstat.close()
+
+    if True: # Close statistics file
+        ftime.close()        
 
     _tdone = time.time()
     dt_nc = _tdone - _tstart
