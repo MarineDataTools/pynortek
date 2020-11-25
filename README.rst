@@ -64,7 +64,11 @@ The main function is pynortek_vec2nc, arguments are the input file and the netcd
 	  
 	  pynortek_vec2nc advfile.vec advfile.nc
 
-Done
+Which results in a netcdf file called advfile.nc. One can also merge several split datafiles into one netcdf file,
+
+.. code:: bash
+	  
+	  pynortek_vec2nc advfile1.vec advfile2.vec advfile3.vec advfile.nc
 
 
 
