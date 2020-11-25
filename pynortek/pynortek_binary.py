@@ -509,7 +509,7 @@ nortek_packages = [package_aquadopp_velocity,
 
 
 
-def convert_bin(data, apply_unit_factor = False, statistics = True, burst_num=0,burst_sample=0,burst_startdate=0):
+def convert_bin(data, apply_unit_factor = False, statistics = True, burst_num=0,burst_sample=0,burstIMU_sample=0,burst_startdate=0):
     """ Converts a binary data stream into a list of packages (dictionaries)
     offset: The offset of the binary data given with respect to the whole datastream
     """
@@ -561,9 +561,12 @@ def convert_bin(data, apply_unit_factor = False, statistics = True, burst_num=0,
                     # Convert the data
                     if package['function'] is not None:
                         # Add the burst to the velocity package
-                        if(package['name'] == 'Vec vel' or package['name'] == 'IMU'):
+                        if(package['name'] == 'Vec vel'):
                             conv_data = package['function'](data_package, apply_unit_factor = apply_unit_factor, scaling = scaling, burst_info = [burst_num,burst_sample,burst_startdate])
                             burst_sample += 1
+                        elif(package['name'] == 'IMU'):
+                            conv_data = package['function'](data_package, apply_unit_factor = apply_unit_factor, scaling = scaling, burst_info = [burst_num,burstIMU_sample,burst_startdate])
+                            burstIMU_sample += 1                           
                         else:
                             conv_data = package['function'](data_package, apply_unit_factor = apply_unit_factor, scaling = scaling)
 
@@ -575,6 +578,7 @@ def convert_bin(data, apply_unit_factor = False, statistics = True, burst_num=0,
                     if(package['name'] == 'Vector velocity header'):
                         burst_num += 1 # The burst number
                         burst_sample = 0 # Count the burst sample number
+                        burstIMU_sample = 0 # Count the burst sample number                        
                         burst_startdate = conv_data['date']
                         #print('Nrecords',conv_data['NRecords'])
                         #print('Date',conv_data['date'])                        
@@ -613,7 +617,7 @@ def convert_bin(data, apply_unit_factor = False, statistics = True, burst_num=0,
         if(FOUND_PACKAGE == False): # Try next byte
             i += 1
 
-    ret_dict = {'packages':conv_data_all, 'ilast':ilast,'data_rest':data[ilast:],'burst_num':burst_num,'burst_sample':burst_sample,'burst_startdate':burst_startdate}
+    ret_dict = {'packages':conv_data_all, 'ilast':ilast,'data_rest':data[ilast:],'burst_num':burst_num,'burst_sample':burst_sample,'burstIMU_sample':burstIMU_sample,'burst_startdate':burst_startdate}
     if(statistics):
         ret_dict['statistics'] = statistic_dict
         
@@ -739,6 +743,7 @@ def create_netcdf(fname, vel=True, imu=True):
     zlib = True # compression
     dataset = netCDF4.Dataset(fname, 'w')
     dataset.history = str(datetime.datetime.now()) + ': Pynortek version ' + version
+    grpinfo = dataset.createGroup('info')
     conv_data = convert_vector_system_data(None,units = True)    
     sysgrp = create_group(dataset,conv_data,'sys')
     if vel:    
@@ -1066,6 +1071,7 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
     packages_read = 0
     burst_num        = 0 # Bursts found
     burst_sample     = 0 # The sample number within the burst
+    burstIMU_sample  = 0 # The sample number within the burst                           
     burst_startdate = datetime.datetime(1,1,1) # The burst start date
     logger.info('This is vec2nc version ' + version)
     logger.info('Checking times in input file(s)')
@@ -1155,9 +1161,10 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
                 data = package_data['data_rest'] + data
 
             # Convert the data
-            package_data     = convert_bin(data,statistics = True,burst_num=burst_num,burst_sample=burst_sample,burst_startdate=burst_startdate)
+            package_data     = convert_bin(data,statistics = True,burst_num=burst_num,burst_sample=burst_sample,burstIMU_sample=burstIMU_sample,burst_startdate=burst_startdate)
             burst_num        = package_data['burst_num'] # update the bursts
             burst_sample     = package_data['burst_sample'] # update the bursts
+            burstIMU_sample  = package_data['burstIMU_sample'] # update the bursts
             burst_startdate = package_data['burst_startdate'] # update the bursts                        
             ilast            = package_data['ilast']
             statistics       = package_data['statistics']['packages']

@@ -16,18 +16,20 @@ logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 logger = logging.getLogger('pynortek')
 
 def xyz2enu(u,v,w,head,pitch,roll,inverse=False):
-    """Transforms volcities in XYZ coordinates to ENU, or vice versa if
+    """
+    Transforms velocities in XYZ coordinates to ENU, or vice versa if
     inverse=True. Transformation is done according to the Nortek
     convention
+
     """
     # convert to radians
     hh = np.pi*(head-90)/180
     pp = np.pi*pitch/180
     rr = np.pi*roll/180
 
-    ut = np.NaN(shape(u))
-    vt = np.NaN(shape(u))
-    wt = np.NaN(shape(u))    
+    ut = np.zeros(np.shape(u))
+    vt = np.zeros(np.shape(u))
+    wt = np.zeros(np.shape(u))    
 
     for i in range(len(head)):
         # generate heading matrix
@@ -38,7 +40,7 @@ def xyz2enu(u,v,w,head,pitch,roll,inverse=False):
              [sin(pp[i]),  sin(rr[i])*cos(pp[i]),  cos(pp[i])*cos(rr[i])]]
 
         R = H*P
-        print(R)
+        #print(R)
         if(inverse):
             R = np.inv(R)
 
@@ -47,7 +49,8 @@ def xyz2enu(u,v,w,head,pitch,roll,inverse=False):
         vt[i]  = R[1,0]*u[i] + R[1,1]*v[i] + R[1,2]*w[i];
         wt[i]  = R[2,0]*u[i] + R[2,1]*v[i] + R[2,2]*w[i];
 
-        
+    
+    return [ut,vt,wt]
 
 raw_data_files = ['.prf','.vec'] # Names of raw binary data files 
 class pynortek():
@@ -221,14 +224,14 @@ class pynortek():
                     pass
 
                 if(header_field is not None):
-                    if(header_field is 'sensors'):
+                    if(header_field == 'sensors'):
                         l = l.replace('\n','').replace('\r','').strip() # remove return and trailing/leading blanks
                         lsp = re.sub("  +" , "\t", l).split('\t')
                         print('sensors',lsp)
                         field = lsp[1]
                         value = lsp[0]
                         header[header_field][field] = int(value)
-                    elif(header_field is 'distance'):
+                    elif(header_field == 'distance'):
                         l = l.replace('\n','').replace('\r','').strip() # remove return and trailing/leading blanks
                         lsp = re.sub("  +" , "\t", l).split('\t')
                         cell = lsp[0]                        
