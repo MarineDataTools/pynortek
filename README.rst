@@ -46,13 +46,19 @@ pip uninstall pynortek
 FEATURES
 --------
 
+Pynorteks main functionality are the binary reading of ADV Vector
+(.vec) files and storing in the netCDF_ format, which is designed to
+handle huge datasets. The original Nortek software converts the data
+into text files, which become unhandy when the dataset increases in
+size. 
 
-USAGE
------
+.. _netCDF: https://www.unidata.ucar.edu/software/netcdf/
 
   
 EXAMPLES 
 --------
+
+The main function is "pynortek_vec2nc".
 
 
 	  
