@@ -61,8 +61,9 @@ EXAMPLES
 The main function is pynortek_vec2nc, arguments are the input file and the netcdf filename, i.e.:
 
 .. code:: bash
-	  
-pynortek_vec2nc advfile.vec advfile.nc
+	  pynortek_vec2nc advfile.vec advfile.nc
+
+
 
 
 	  
