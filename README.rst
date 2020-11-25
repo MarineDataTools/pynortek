@@ -50,7 +50,12 @@ Pynorteks main functionality are the binary reading of ADV Vector
 (.vec) files and storing in the netCDF_ format, which is designed to
 handle huge datasets. The original Nortek software converts the data
 into text files, which become unhandy when the dataset increases in
-size. 
+size. The main feature during the conversion process is to add a
+timestamp to all velocity measurements. The raw binary velocity data
+does not include time stamps. To do so packages with timestamp (sys,
+velocity header) in the vicinity of the velocity package have to be
+found and, depending on the samplingrate, timestamp of the velocity
+package are calculated.
 
 .. _netCDF: https://www.unidata.ucar.edu/software/netcdf/
 
