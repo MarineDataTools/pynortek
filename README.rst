@@ -76,6 +76,10 @@ Which results in a netcdf file called advfile.nc. One can also merge several spl
 	  pynortek_vec2nc advfile1.vec advfile2.vec advfile3.vec advfile.nc
 
 
+Plotting netCDF4 files
+----------------------
+
+
 
 
 	  

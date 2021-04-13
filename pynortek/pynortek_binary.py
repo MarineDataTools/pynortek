@@ -558,7 +558,7 @@ def convert_bin(data, apply_unit_factor = False, statistics = True, burst_num=0,
 
                         
                         
-                    # Convert the data
+                    # Convert the data and update sample counters
                     if package['function'] is not None:
                         # Add the burst to the velocity package
                         if(package['name'] == 'Vec vel'):
@@ -581,7 +581,11 @@ def convert_bin(data, apply_unit_factor = False, statistics = True, burst_num=0,
                         burstIMU_sample = 0 # Count the burst sample number                        
                         burst_startdate = conv_data['date']
                         #print('Nrecords',conv_data['NRecords'])
-                        #print('Date',conv_data['date'])                        
+                        #print('Date',conv_data['date'])
+
+                    # New bursts have typically first sys packages and then velocity/IMU data, so the startdate has to be updated
+                    if((package['name'] == 'Vec sys') and (burst_sample == 0)): # A system package
+                        burst_startdate = conv_data['date']
 
                     if(statistics):
                         try:
@@ -739,7 +743,7 @@ def add_timestamp_sys(packages,samplingrate,burst_sample=-10e6,burstIMU_sample=-
 
 
 def create_netcdf(fname, vel=True, imu=True):
-    print('Creating netcdf with IMU:' + str(imu))
+    logger.info('Creating netcdf with IMU:' + str(imu))
     zlib = True # compression
     dataset = netCDF4.Dataset(fname, 'w')
     dataset.history = str(datetime.datetime.now()) + ': Pynortek version ' + version
@@ -771,7 +775,7 @@ def create_group(dataset,package,group_name,zlib = True,time=True):
         else:
             dtype = package['dtype'][key]
             if(dtype is not None):
-                print('Creating variable with type',key,dtype)
+                logger.info('Creating variable with type',key,dtype)
                 varnc = grp.createVariable(key, dtype, ('count'),zlib=zlib)
                 unit = package['units'][key]
                 varnc.units = unit
@@ -1057,7 +1061,7 @@ def find_time_range(fname):
 
 
 #def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
-def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
+def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None, logfile=True):
     """ Converts binary files to a netCDF
     Arguments:
        chunksize: The number of bytes read at once
@@ -1120,10 +1124,11 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
         # Create netCDF file
         logger.info('Creating netcdf file: ' + fname_nc)
         dataset = create_netcdf(fname_nc,imu=HAS_IMU)
-        logger.info('Opening a logfile')
-        fstat = open(fname_nc + '.log','w')
-        logger.info('Opening a timestamp debug logfile')
-        ftime = open(fname_nc + '.timestamp.log','w')                
+        if(logfile): # Creating logfiles 
+            logger.info('Opening a logfile')
+            fstat = open(fname_nc + '.log','w')
+            logger.info('Opening a timestamp debug logfile')
+            ftime = open(fname_nc + '.timestamp.log','w')                
     else:
         return
 
@@ -1176,8 +1181,8 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
                 package_data['config']['user']
             except:
                 pass
-            # Writing the data to file statistics.dat
-            if True:
+            # Writing the data to logfile
+            if logfile:
                 for k in range(len(package_data['statistics']['packages'])):
                     packnum = package_data['statistics']['packages'][k][2]
                     binoff  = package_data['statistics']['packages'][k][0]
@@ -1228,14 +1233,16 @@ def bin2nc(fnames_in,fname_nc,chunksize = 4096*2000, nbytes=None):
 
 
                 # Writing a timestamp debug file
-                for p in package_tmp:
-                    try:
-                        dstr = p['name'] + '\t ' + str(p['date'])
-                    except:
-                        dstr = p['name']
+                if logfile:
+                    for p in package_tmp:
+                        try:
+                            dstr = p['name'] + '\t ' + str(p['date'])
+                        except:
+                            dstr = p['name']
 
-                    dstr += '\n'
-                    ftime.write(dstr)
+                        dstr += '\n'
+                        ftime.write(dstr)
+                        
                 # Adding the packages to netcdf
                 for isave in range(len(package_tmp)-1,-1,-1): # Put only datasets with timestamp
                     p = package_tmp[isave]
@@ -1306,21 +1313,23 @@ def vec2nc():
     in_help         = 'One or more Nortek Vector binary file(s) (filename.VEC)'
     nc_help         = 'Name of the netCDF output file (typically filename.nc)'
     nbytes_help     = 'Read only number of bytes of the total length of all datasets'
+    logfile_help    = 'Creates logfiles containing the data packages found in the binary file and the calculated time of the velocity and IMU packages'    
     info_help       = 'Prints useful information about files'
     parser = argparse.ArgumentParser(description='Convert a Nortek .VEC file binary Vector file into netCDF file')
     parser.add_argument('--version', action='version', version='%(prog)s ' + version)
     parser.add_argument('--nbytes', help=nbytes_help)
-    parser.add_argument('--info', action='store_true', help=info_help)    
+    parser.add_argument('--info', action='store_true', help=info_help)
+    parser.add_argument('--logfile', action='store_true', help=logfile_help)    
     parser.add_argument('filename_bin',nargs='+',help=in_help)
     parser.add_argument('filename_nc',help=nc_help)        
     args = parser.parse_args()
 
     filename_bin = args.filename_bin
     filename_nc = args.filename_nc
-    print('Hallo!')
-    print(filename_bin)
-    print(filename_nc)
-    print(args.nbytes)
+
+    #print(filename_bin)
+    #print(filename_nc)
+    #print(args.nbytes)
     # Number of bytes to read
     if(args.nbytes is not None):
         nbytes = int(float(args.nbytes))
@@ -1332,10 +1341,13 @@ def vec2nc():
         vecinfo(filename_bin)
         return
 
+    if(args.logfile):
+        logger.info('Will write logfiles')
+
     if(filename_nc is not None):
         if(os.path.isfile(filename_nc) ):
-            print('Target nc file is existing, will quit now')
+            logger.info('Target nc file is existing, will quit now')
             return
 
-        print('Start converting file(s)')
-        bin2nc(filename_bin,filename_nc,nbytes = nbytes)
+        logger.info('Start converting file(s)')
+        bin2nc(filename_bin,filename_nc,nbytes = nbytes,logfile=args.logfile)
