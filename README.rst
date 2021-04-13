@@ -79,6 +79,39 @@ Which results in a netcdf file called advfile.nc. One can also merge several spl
 Plotting netCDF4 files
 ----------------------
 
+Assuming that pynortek_vec2nc created a netCDF file called
+advfile.nc. The following small program plots the first velocity
+component.
+
+.. code:: python
+	  
+	  import pylab as pl
+	  import netCDF4
+	  import matplotlib.dates as mdates
+
+	  nc = netCDF4.Dataset('advfile.nc')
+	  tsys = nc.groups['sys'].variables['time'][:] # Unix time
+	  tvel = nc.groups['vel'].variables['time'][:] # Unix time
+	  v1 = nc.groups['vel'].variables['v1'][:] # The v1 velocity
+	  burst = nc.groups['vel'].variables['burst'][:] # The burst sample
+
+	  pl.figure(1)
+	  pl.clf()
+	  pl.subplot(2,1,1)
+	  pl.plot(tvel,v1)
+	  pl.xlabel('unix time [s]')
+	  pl.ylabel('u [m/s]')
+
+	  pl.subplot(2,1,2)
+	  for i in range(max(burst)):
+	  ind = burst == i
+	  pl.plot_date(pl.epoch2num(tvel[ind]),v1[ind],'-')
+
+	  pl.xlabel('Date')
+	  pl.ylabel('u [m/s]')    
+	  pl.draw()
+	  pl.show()
+
 
 
 
