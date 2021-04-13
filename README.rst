@@ -74,6 +74,14 @@ Which results in a netcdf file called advfile.nc. One can also merge several spl
 .. code:: bash
 	  
 	  pynortek_vec2nc advfile1.vec advfile2.vec advfile3.vec advfile.nc
+	  
+The conversion can also be done within a python script.
+
+.. code:: python
+	  
+	  import pynortek
+	  pynortek.bin2nc(advfile.vec,advfile.nc)
+
 
 
 Plotting netCDF4 files
