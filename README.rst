@@ -13,13 +13,13 @@ earlier versions, but its not supported.
 User
 ____
 
-Install as a user
+Install package (call within the pynortek folder with setup.py)
 
 .. code:: bash
 	  
-   python setup.py install --user
+   pip install . 
 
-Uninstall as a user
+Uninstall
    
 .. code:: bash
 	  
@@ -30,11 +30,11 @@ pip uninstall pynortek
 Developer
 _________
 
-Install as a developer
+Install as a developer (call within the pynortek folder with setup.py)
 
 .. code:: bash
 	  
-   python setup.py develop --user
+   pip install -e . 
 
 Uninstall as a user
    

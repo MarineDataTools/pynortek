@@ -200,7 +200,7 @@ class pynortek():
                     tmp.append(fhdr.readline())
                     tmp.append(fhdr.readline())                    
                     for i in range(3):
-                        T_tmp = np.asarray(tmp[i].split()[-3:]).astype(np.float)
+                        T_tmp = np.asarray(tmp[i].split()[-3:]).astype(float)
                         header['Transformation matrix'][i,:] = T_tmp
 
                     logger.debug(str(header['Transformation matrix']))
@@ -214,7 +214,7 @@ class pynortek():
                     tmp.append(fhdr.readline())
                     tmp.append(fhdr.readline())                    
                     for i in range(3):
-                        T_tmp = np.asarray(tmp[i].split()[-3:]).astype(np.float)
+                        T_tmp = np.asarray(tmp[i].split()[-3:]).astype(float)
                         header['Magnetometer calibration matrix'][i,:] = T_tmp
 
                     logger.debug(str(header['Magnetometer calibration matrix']))
@@ -300,7 +300,7 @@ class pynortek():
                self.data[key] = self.rawdata[key][:,2:]
 
 
-    def rot_vel(self,coord,updown=None,save=False):
+    def rot_vel(self,coord,updown=None,save=True):
         """ Rotates the velocities to different coordinate system
         Args:
             coord:
@@ -330,7 +330,7 @@ class pynortek():
             v3_rep_rot = np.zeros(np.shape(self.data['v3_rep']))
             repaired = True
         except:
-            repaired_false = True            
+            repaired = False
             pass
         
         print(np.shape(self.data['v1']))
@@ -367,8 +367,168 @@ class pynortek():
 
         return [v1_rot,v2_rot,v3_rot]
 
+    def avg(self,burst=True,navg=None):
+        if burst:
+            self.burst_avg()
 
-        
+    def navg(self,navg=10):
+        """
+        Averages n samples to one value
+        """
+        funcname = __name__ + '.navg_avg():'
+        try:
+            self.rotvel
+            flag_rotvel = True
+        except:
+            flag_rotvel = False
+        nsamples = len(self.t)
+        print('Nsamples',nsamples)
+        burstavg = {}
+        burstavg_rotvel = {}
+        varavg = ['v1','v2','v3','a1','a2','a3','c1','c2','c3','Pressure']
+        logger.info(funcname + ' Will average over {:d} samples'.format(navg))
+        #burstavg['nburst'] = []
+        burstavg['t'] = []
+        for count,i in enumerate(range(0,nsamples,navg)):
+            iup = min([i+navg,nsamples])
+            ind = range(i,iup)
+            t0 = self.t[ind[0]]
+            t1 = self.t[ind[-1]]
+            dt = t1 - t0
+            tb = t0 + dt / 2
+            #print(t0,dt)
+            burstavg['t'].append(tb)
+            #burstavg['nburst'].append(sum(ind))
+            logger.debug('Averaging {:d} samples of burst {:d} between {:s} and {:s}'.format(sum(ind),i, str(t0), str(t1)))
+            for ivar, v in enumerate(varavg):
+                if count == 0:
+                    burstavg[v] = []
+
+                # This holds for vectors
+                if len(np.shape(self.data[v])) == 2:
+                    dataavg = self.data[v][ind,:].mean(0)
+                elif len(np.shape(self.data[v])) == 1:
+                    dataavg = self.data[v][ind].mean(0)
+
+                burstavg[v].append(dataavg)
+
+
+            if flag_rotvel:
+                rotvel_vars = ['u', 'v', 'w']
+                for ivar, v in enumerate(rotvel_vars):
+                    if count == 0:
+                        burstavg_rotvel[v] = []
+
+                    dataavg = self.rotvel[v][ind, :].mean(0)
+                    burstavg_rotvel[v].append(dataavg)
+
+
+                #dataavg = self.data[v][ind, :].mean(0)
+
+        # Make an array out of the lists
+        burstavg['t'] = np.asarray(burstavg['t'])
+        #burstavg['nburst'] = np.asarray(burstavg['nburst'])
+        for ivar, v in enumerate(varavg):
+            burstavg[v] = np.asarray(burstavg[v])
+
+        self.data_navg = burstavg
+
+        if flag_rotvel:
+            for ivar, v in enumerate(rotvel_vars):
+                burstavg_rotvel[v] = np.asarray(burstavg_rotvel[v])
+                self.rotvel_burstavg = burstavg_rotvel            
+
+    def burst_avg(self, c_threshold=0):
+        """
+        Averages the bursts
+        """
+        funcname = __name__ + '.burst_avg():'
+        nbursts = int(self.data['Burst counter'].max())
+        sburst = int(self.data['Burst counter'].min())
+        burstavg = {}
+        burstavg_rotvel = {}
+        varavg = ['v1','v2','v3','a1','a2','a3','c1','c2','c3','Pressure']
+        logger.info(funcname + ' Will average {:d} bursts'.format(nbursts))
+        burstavg['nburst'] = []
+        burstavg['t'] = []
+        for count,i in enumerate(range(sburst,nbursts)):
+            ind = self.data['Burst counter'] == i
+            indi = np.where(ind)[0]
+            t0 = self.t[indi[0]]
+            t1 = self.t[indi[-1]]
+            dt = t1 - t0
+            tb = t0 + dt / 2
+            #print(t0,dt)
+            burstavg['t'].append(tb)
+            burstavg['nburst'].append(sum(ind))
+            logger.debug('Averaging {:d} samples of burst {:d} between {:s} and {:s}'.format(sum(ind),i, str(t0), str(t1)))
+            for ivar, v in enumerate(varavg):
+                if count == 0:
+                    burstavg[v] = []
+
+                # This holds for vectors
+                if len(np.shape(self.data[v])) == 2:
+                    datatmp = self.data[v][ind,:]
+                    if c_threshold > 0:
+                        c1tmp = self.data['c1'][ind,:]
+                        c2tmp = self.data['c2'][ind,:]
+                        c3tmp = self.data['c3'][ind,:]                        
+                elif len(np.shape(self.data[v])) == 1:
+                    datatmp = self.data[v][ind]
+                    if c_threshold > 0:
+                        c1tmp = self.data['c1'][ind]
+                        c2tmp = self.data['c2'][ind]
+                        c3tmp = self.data['c3'][ind]
+
+                if c_threshold > 0 and (v != 'Pressure'):                
+                    indbad = (c1tmp <= c_threshold) & (c2tmp <= c_threshold) & (c3tmp <= c_threshold)
+                    #print(np.shape(indbad),np.shape(datatmp),np.shape(c1tmp),np.shape(c2tmp),np.shape(c3tmp))
+                    datatmp[indbad] = np.NaN
+                    dataavg = np.nanmean(datatmp,0)
+                else:
+                    dataavg = datatmp.mean(0)
+                    
+                burstavg[v].append(dataavg)
+
+
+            if True:
+                rotvel_vars = ['u', 'v', 'w']
+                for ivar, v in enumerate(rotvel_vars):
+                    if count == 0:
+                        burstavg_rotvel[v] = []
+
+                    datatmp = self.rotvel[v][ind, :]
+                    if c_threshold > 0:
+                        c1tmp = self.data['c1'][ind,:]
+                        c2tmp = self.data['c2'][ind,:]
+                        c3tmp = self.data['c3'][ind,:]
+                        indbad = (c1tmp <= c_threshold) & (c2tmp <= c_threshold) & (c3tmp <= c_threshold)
+                        #print(np.shape(indbad),np.shape(datatmp),np.shape(c1tmp),np.shape(c2tmp),np.shape(c3tmp))
+                        datatmp[indbad] = np.NaN
+                        dataavg = np.nanmean(datatmp,0)
+                        #print('dataavg')
+                    else:
+                        dataavg = datatmp.mean(0)                        
+                    
+                    burstavg_rotvel[v].append(dataavg)
+
+
+                #dataavg = self.data[v][ind, :].mean(0)
+
+        # Make an array out of the lists
+        burstavg['t'] = np.asarray(burstavg['t'])
+        burstavg['nburst'] = np.asarray(burstavg['nburst'])
+        for ivar, v in enumerate(varavg):
+            burstavg[v] = np.asarray(burstavg[v])
+
+        self.data_burstavg = burstavg
+
+        if True:
+            for ivar, v in enumerate(rotvel_vars):
+                burstavg_rotvel[v] = np.asarray(burstavg_rotvel[v])
+                self.rotvel_burstavg = burstavg_rotvel
+
+
     def repair_phase_shift(self,vel=None,threshold=None, save = False):
         """Tries to repair a phase shift in pulse coherent measurements. It
         assumes that the first measured value is correct.
