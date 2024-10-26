@@ -126,11 +126,17 @@ class pynortek():
                     header_field = 'sensors'
                     header[header_field] = {}
 
-            # Transducer distance 
+            # Transducer distance (beam coordinates)
             if(('Beam' in l) and ('Vertical' in l)):
-                print('Transducer distance')
+                print('Transducer distance (beam coordinates)')
                 header_field = 'distance'
                 header[header_field] = {'cell':[],'beam':[],'vertical':[]}
+                continue
+
+            if 'Current profile cell center distance from head' in l:
+                print('Transducer distance (XYZ or ENU coordinates)')
+                header_field = 'distance'
+                header[header_field] = {'cell': [], 'vertical': []}
                 continue
 
             
@@ -158,6 +164,12 @@ class pynortek():
             if(ind >= 0):
                 if('Number of measurements' in l):
                     header['Number of measurements'] = int(l.split()[-1])
+                elif ('Burst sampling' in l):
+                    logger.debug('Burst sampling entry found')
+                    if 'ON' in l:
+                        header['Burst sampling'] = True
+                    else:
+                        header['Burst sampling'] = False
                 elif('Coordinate system' in l):
                     header['Coordinate system'] = l.split()[-1]
                     logger.debug('Coordinate system found: ' + header['Coordinate system'])
@@ -234,13 +246,21 @@ class pynortek():
                     elif(header_field == 'distance'):
                         l = l.replace('\n','').replace('\r','').strip() # remove return and trailing/leading blanks
                         lsp = re.sub("  +" , "\t", l).split('\t')
-                        cell = lsp[0]                        
-                        beam = lsp[1]
-                        vertical = lsp[2]
-                        print(cell,beam,vertical)
-                        header[header_field]['cell'].append(int(cell))
-                        header[header_field]['beam'].append(float(beam))
-                        header[header_field]['vertical'].append(float(vertical))
+                        if len(lsp)>2:
+                            cell = lsp[0]
+                            beam = lsp[1]
+                            vertical = lsp[2]
+                            print('Distance beam',cell,beam,vertical)
+                            header[header_field]['cell'].append(int(cell))
+                            header[header_field]['beam'].append(float(beam))
+                            header[header_field]['vertical'].append(float(vertical))
+                        else:
+                            cell = lsp[0]
+                            vertical = lsp[1]
+                            print('Distance xyz',cell, vertical)
+                            header[header_field]['cell'].append(int(cell))
+                            header[header_field]['vertical'].append(float(vertical))
+
                     else:
                         ind2 = l.rfind('  ')
                         data = l[ind2+2:].replace('\n','').replace('\r','')
@@ -282,22 +302,37 @@ class pynortek():
 
         
         # Processing the remaining data
+        try:
+            burst_sampling = self.header['Burst sampling']
+        except:
+            burst_sampling = False
+
+        logger.info('Burst sampling {}'.format(burst_sampling))
         # For a profiler (Aquadopp)
         aquadopp_keys = ['v1','v2','v3','a1','a2','a3','c1','c2','c3']
         for key in aquadopp_keys:
             if(key in self.rawdata.keys()):
-               print('Getting data from: ' + key + ' (profiler)')
-               self.data[key] = self.rawdata[key][:,2:]
+               logger.info('Getting data from: ' + key + ' (profiler)')
+               if burst_sampling:
+                   self.data[key] = self.rawdata[key][:,2:]
+               else:
+                   self.data[key] = self.rawdata[key][:,:]
 
         if('distance' in self.header.keys()):
-            self.data['dis_beam'] = np.asarray(self.header['distance']['beam'])
+            try:
+                self.data['dis_beam'] = np.asarray(self.header['distance']['beam'])
+            except:
+                pass
             self.data['dis_vertical'] = np.asarray(self.header['distance']['vertical'])
 
         vector_keys = ['dat']
         for key in vector_keys:
             if(key in self.rawdata.keys()):
-               print('Getting data from: ' + key + ' (Vector)')
-               self.data[key] = self.rawdata[key][:,2:]
+               logger.info('Getting data from: ' + key + ' (Vector)')
+               if burst_sampling:
+                   self.data[key] = self.rawdata[key][:,2:]
+               else:
+                   self.data[key] = self.rawdata[key][:,:]
 
 
     def rot_vel(self,coord,updown=None,save=True):
@@ -367,9 +402,11 @@ class pynortek():
 
         return [v1_rot,v2_rot,v3_rot]
 
-    def avg(self,burst=True,navg=None):
+    def avg(self,burst=True,navg=10):
         if burst:
             self.burst_avg()
+        else:
+            self.navg(navg)
 
     def navg(self,navg=10):
         """
@@ -401,17 +438,19 @@ class pynortek():
             #burstavg['nburst'].append(sum(ind))
             logger.debug('Averaging {:d} samples of burst {:d} between {:s} and {:s}'.format(sum(ind),i, str(t0), str(t1)))
             for ivar, v in enumerate(varavg):
-                if count == 0:
-                    burstavg[v] = []
+                if v in self.data.keys():
+                    if count == 0:
+                        burstavg[v] = []
 
-                # This holds for vectors
-                if len(np.shape(self.data[v])) == 2:
-                    dataavg = self.data[v][ind,:].mean(0)
-                elif len(np.shape(self.data[v])) == 1:
-                    dataavg = self.data[v][ind].mean(0)
+                    # This holds for vectors
+                    if len(np.shape(self.data[v])) == 2:
+                        dataavg = self.data[v][ind,:].mean(0)
+                    elif len(np.shape(self.data[v])) == 1:
+                        dataavg = self.data[v][ind].mean(0)
 
-                burstavg[v].append(dataavg)
-
+                    burstavg[v].append(dataavg)
+                else:
+                    logger.info('Variable {} not found'.format(v))
 
             if flag_rotvel:
                 rotvel_vars = ['u', 'v', 'w']
@@ -429,7 +468,8 @@ class pynortek():
         burstavg['t'] = np.asarray(burstavg['t'])
         #burstavg['nburst'] = np.asarray(burstavg['nburst'])
         for ivar, v in enumerate(varavg):
-            burstavg[v] = np.asarray(burstavg[v])
+            if v in self.data.keys():
+                burstavg[v] = np.asarray(burstavg[v])
 
         self.data_navg = burstavg
 
