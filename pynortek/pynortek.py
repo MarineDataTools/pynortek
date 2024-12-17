@@ -8,6 +8,33 @@ import os
 import re
 from numpy import cos,sin
 
+
+whd_format = """1   Month                            (1-12)
+ 2   Day                              (1-31)
+ 3   Year
+ 4   Hour                             (0-23)
+ 5   Minute                           (0-59)
+ 6   Second                           (0-59)
+ 7   Burst counter
+ 8   No of wave data records
+ 9   Cell position                    (m)
+10   Battery voltage                  (V)
+11   Soundspeed                       (m/s)
+12   Heading                          (degrees)
+13   Pitch                            (degrees)
+14   Roll                             (degrees)
+15   Minimum pressure                 (dbar)
+16   Maximum pressure                 (dbar)
+17   Temperature                      (degrees C)
+18   CellSize                         (m)
+19   Noise amplitude beam 1           (counts)
+20   Noise amplitude beam 2           (counts)
+21   Noise amplitude beam 3           (counts)
+22   Noise amplitude beam 4           (counts)
+23   AST window start                 (m)
+24   AST window size                  (m)
+25   AST window offset                (m)"""
+
 # Get the version
 version_file = pkg_resources.resource_filename('pynortek','VERSION')
 
@@ -52,7 +79,7 @@ def xyz2enu(u,v,w,head,pitch,roll,inverse=False):
     
     return [ut,vt,wt]
 
-raw_data_files = ['.prf','.vec'] # Names of raw binary data files 
+raw_data_files = ['.prf','.vec','.wpa','.wpr'] # Names of raw binary data files
 class pynortek():
     """A Nortek parsing object
 
@@ -71,6 +98,7 @@ class pynortek():
         self.deployment = os.path.split(filename)[-1]
         self.fpath = os.path.split(filename)[0]
         self.rawdata = {}
+        self.data = {}
         print(self.deployment)
         print(self.fpath)        
         filename_hdr = filename + '.hdr'
@@ -78,8 +106,9 @@ class pynortek():
         try:
             fhdr = open(filename_hdr)
         except Exception as e:
-            logger.warning('Could not open header file, exiting')
-            return
+            raise ValueError('Could not open header file, exiting\n{}'.format(filename_hdr))
+            #logger.warning('Could not open header file, exiting')
+            #return
 
         header = self.parse_header(fhdr)
         self.header = header
@@ -97,8 +126,17 @@ class pynortek():
                 suffix = fread.split('.')[-1]
                 fname_tmp = os.path.join(self.fpath,fread)
                 print(fname_tmp)
-                data_tmp = np.loadtxt(fname_tmp)
-                self.rawdata[suffix] = data_tmp
+                # Read the rawdata
+                if fname_tmp.lower().endswith('.stg') or fname_tmp.lower().endswith('.whd') or fname_tmp.lower().endswith('.wad'):
+                    print('STG')
+                    self.process_rawdata_wave(fname_tmp)
+                else:
+                    try:
+                        data_tmp = np.loadtxt(fname_tmp)
+                        self.rawdata[suffix] = data_tmp
+                    except:
+                        self.rawdata[suffix] = None
+
 
 
         # Process the raw data just loaded
@@ -108,6 +146,7 @@ class pynortek():
         """ Parses a nortek header file
         """
         header = {}
+        header['Burst sampling'] = False
         datefmt = '%d.%m.%Y %H:%M:%S'
         header_field = None
         header['files'] = []
@@ -272,6 +311,85 @@ class pynortek():
 
         return header
 
+    def process_rawdata_wave(self,fname):
+        """ Processes rawdata from a wave measurement
+
+        """
+        try:
+            self.data_wave
+        except:
+            self.data_wave = {}
+
+        if fname.lower().endswith('.stg'):
+            data1 = []
+            f = open(fname)
+            for i,l in enumerate(f.readlines()):
+                # There is always a two line combination
+                if i%2==0:
+                    larray = np.fromstring(l, sep=' ')
+                    #print('larray',larray,len(larray))
+                    data1.append(larray)
+
+            data1 = np.asarray(data1)
+            self.data_wave['stg'] = data1
+        elif fname.lower().endswith('.whd'): # Wave header file
+            self.__data_wave_whd_entries = {}
+            for lheader in whd_format.split('\n'):
+                #lheader_parse = np.fromstring(lheader, sep=' ')
+                lheader_parse = ' '.join(lheader.split('  '))
+                lsp = lheader.split('  ')
+                print('lheader',lheader,lsp)
+                ind = int(lsp[0])
+                datakey = str(lsp[1]).strip()
+                if ind >= 7:
+                    print('Datakey',datakey,ind)
+                    self.__data_wave_whd_entries[datakey] = ind - 1
+
+            t = []
+            tu = []
+            f = open(fname)
+            self.data_wave['t'] = []
+            self.data_wave['tu'] = []
+
+            self.data_wave['Burst counter'] = []
+            self.data_wave['No of wave data records'] =[]
+            self.data_wave['Cell position'] = []
+            self.data_wave['Battery voltage'] = []
+            for i, l in enumerate(f.readlines()):
+                larray = np.fromstring(l, sep=' ')
+                month = int(larray[0])
+                day = int(larray[1])
+                year = int(larray[2])
+                hour = int(larray[3])
+                minute = int(larray[4])
+                #millis = self.rawdata['sen'][i, 5] % 1
+                second = int(larray[5])
+                #micro = int(millis * 1000 * 1000)
+                micro = 0
+                ttmp = datetime.datetime(year, month, day, hour, minute, second, micro, tzinfo=self.timezone)
+                t.append(ttmp)
+                tu.append(ttmp.timestamp())
+                self.data_wave['t'].append(ttmp)
+                self.data_wave['tu'].append(ttmp.timestamp())
+                for dataentry in self.__data_wave_whd_entries.keys():
+                    print('Dataentry',dataentry)
+                    i_dataentry = self.__data_wave_whd_entries[dataentry]
+                    try:
+                        self.data_wave[dataentry]
+                    except:
+                        self.data_wave[dataentry] = []
+                    self.data_wave[dataentry].append(float(larray[i_dataentry]))
+                #self.data_wave['No of wave data records'].append(int(larray[7]))
+                #self.data_wave['Cell position'].append(float(larray[8]))
+                #self.data_wave['Battery voltage'].append(float(larray[9]))
+
+
+
+
+
+
+
+
     
     def process_rawdata(self):
         """ Processes .sen data stored in data['sen'] and the remaining rawdata
@@ -295,7 +413,7 @@ class pynortek():
         
         self.t = t # datetime time
         self.tu = tu # unix time
-        self.data = {}
+
         for k in self.header['sensors'].keys():
             ind_key = self.header['sensors'][k] - 1
             self.data[k] = self.rawdata['sen'][:,ind_key]
