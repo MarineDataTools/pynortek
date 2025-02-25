@@ -513,7 +513,7 @@ def convert_bin(data, apply_unit_factor = False, statistics = True, burst_num=0,
     """ Converts a binary data stream into a list of packages (dictionaries)
     offset: The offset of the binary data given with respect to the whole datastream
     """
-    scaling = np.NaN # The scaling of the data (depends on the status bit in the system package
+    scaling = np.nan # The scaling of the data (depends on the status bit in the system package
     conv_data_all = []
     i = 0
     ilast = 0 # Index after of the last found package
