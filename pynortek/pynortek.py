@@ -112,33 +112,49 @@ class pynortek():
 
         header = self.parse_header(fhdr)
         self.header = header
-        print(header)
-        print('Loading files')
+        #print(header)
+        logger.info('Loading files')
+        flag_wave = False
         for fread in header['files']:
-            print(fread)
+            logger.info('File:{}'.format(fread))
             IS_RAW = False
             for rawname in raw_data_files:
                 if(rawname in fread.lower()):
                     IS_RAW=True
 
             if(IS_RAW == False):
-                print('Loading ' + fread)
+                logger.info('Loading:{}'.format(fread))
                 suffix = fread.split('.')[-1]
                 fname_tmp = os.path.join(self.fpath,fread)
-                print(fname_tmp)
+                #print(fname_tmp)
                 # Read the rawdata
-                if fname_tmp.lower().endswith('.stg') or fname_tmp.lower().endswith('.whd') or fname_tmp.lower().endswith('.wad'):
-                    print('STG')
-                    self.process_rawdata_wave(fname_tmp)
-                else:
+                if fname_tmp.lower().endswith('.whd'):  # Loading wave header data
+                    logger.info('Reading wave header data')
+                    #self.read_rawdata_wave_header(fname_tmp)
+                    try:
+                        data_tmp = np.loadtxt(fname_tmp)
+                        self.rawdata[suffix] = data_tmp
+                        flag_wave = True                        
+                    except:
+                        self.rawdata[suffix] = None
+                elif fname_tmp.lower().endswith('.wad'):  # Loading wave data
+                    logger.info('Reading wave data')
+                    flag_wave = True
+                    try:
+                        data_tmp = np.loadtxt(fname_tmp)
+                        self.rawdata[suffix] = data_tmp
+                    except:
+                        self.rawdata[suffix] = None
+                else:  # Saving rawdata into dictionary
+                    logger.info('Reading velocity data')                    
                     try:
                         data_tmp = np.loadtxt(fname_tmp)
                         self.rawdata[suffix] = data_tmp
                     except:
                         self.rawdata[suffix] = None
 
-
-
+        if flag_wave:
+            self.process_rawdata_wave()
         # Process the raw data just loaded
         self.process_rawdata()
         
@@ -161,9 +177,19 @@ class pynortek():
                 header['files'].append(ftmp)
                 # If we have a sensor file, check position of fields
                 if('.sen' in l[-7:]):
-                    print('Sensor file')
+                    logger.debug('Found a sensor file (.sen), looking for key entries')
                     header_field = 'sensors'
                     header[header_field] = {}
+                # If we have a wave header file, check position of fields
+                if('.whd' in l[-7:]):
+                    logger.debug('Found a wave header file (.whd), looking for key entries')
+                    header_field = 'wave_header'
+                    header[header_field] = {}
+                # If we have a wave header file, check position of fields
+                if('.wad' in l[-7:]):
+                    logger.debug('Found a wave data file (.wad), looking for key entries')
+                    header_field = 'wave_data'
+                    header[header_field] = {}                                        
 
             # Transducer distance (beam coordinates)
             if(('Beam' in l) and ('Vertical' in l)):
@@ -274,16 +300,31 @@ class pynortek():
                 else:
                     pass
 
+                # Check for the header field an look for the entries that are mapping the matrix structure to individual data/sensors
                 if(header_field is not None):
                     if(header_field == 'sensors'):
                         l = l.replace('\n','').replace('\r','').strip() # remove return and trailing/leading blanks
                         lsp = re.sub("  +" , "\t", l).split('\t')
-                        print('sensors',lsp)
+                        logger.debug('.sen sensors entry:{}'.format(lsp))
                         field = lsp[1]
                         value = lsp[0]
                         header[header_field][field] = int(value)
+                    elif(header_field == 'wave_header'):
+                        l = l.replace('\n','').replace('\r','').strip()
+                        lsp = re.sub("  +" , "\t", l).split('\t')
+                        logger.debug('.whd entry:{}'.format(lsp))
+                        field = lsp[1]
+                        value = lsp[0]
+                        header[header_field][field] = int(value)
+                    elif(header_field == 'wave_data'):
+                        l = l.replace('\n','').replace('\r','').strip()
+                        lsp = re.sub("  +" , "\t", l).split('\t')
+                        logger.debug('.wad entry:{}'.format(lsp))
+                        field = lsp[1]
+                        value = lsp[0]
+                        header[header_field][field] = int(value)                                                
                     elif(header_field == 'distance'):
-                        l = l.replace('\n','').replace('\r','').strip() # remove return and trailing/leading blanks
+                        l = l.replace('\n','').replace('\r','').strip()
                         lsp = re.sub("  +" , "\t", l).split('\t')
                         if len(lsp)>2:
                             cell = lsp[0]
@@ -311,7 +352,7 @@ class pynortek():
 
         return header
 
-    def process_rawdata_wave(self,fname):
+    def read_rawdata_wave_header(self,fname):
         """ Processes rawdata from a wave measurement
 
         """
@@ -320,7 +361,20 @@ class pynortek():
         except:
             self.data_wave = {}
 
-        if fname.lower().endswith('.stg'):
+
+        if fname.lower().endswith('.wad'):
+            data1 = []
+            f = open(fname)
+            for i,l in enumerate(f.readlines()):
+                # There is always a two line combination
+                if i%2==0:
+                    larray = np.fromstring(l, sep=' ')
+                    #print('larray',larray,len(larray))
+                    data1.append(larray)
+
+            data1 = np.asarray(data1)
+            self.data_wave['stg'] = data1            
+        elif fname.lower().endswith('.stg'):  # Legacy, remove soon
             data1 = []
             f = open(fname)
             for i,l in enumerate(f.readlines()):
@@ -350,7 +404,6 @@ class pynortek():
             f = open(fname)
             self.data_wave['t'] = []
             self.data_wave['tu'] = []
-
             self.data_wave['Burst counter'] = []
             self.data_wave['No of wave data records'] =[]
             self.data_wave['Cell position'] = []
@@ -383,18 +436,100 @@ class pynortek():
                 #self.data_wave['Cell position'].append(float(larray[8]))
                 #self.data_wave['Battery voltage'].append(float(larray[9]))
 
+    def process_rawdata_wave(self):
+        """ Processes .wad data stored in data['wad'] and the remaining rawdata, mainly adding a proper time stamp and similar tasks
+        """
+        logger.debug('Creating time axis for wave data')
+        freqstr = self.header['Head configuration']['Head frequency']
+        if freqstr.startswith('1000'):
+            logger.debug('1000 kHz: Setting Delta t for burst to 0.5s (0.25 for AST)')
+            dt = datetime.timedelta(seconds=0.5)
+            dt_AST = datetime.timedelta(seconds=0.25)
+        else:
+            logger.debug('<1000 kHz: Setting Delta t for burst to 1s (0.5 for AST)')
+            dt = datetime.timedelta(seconds=1.0)
+            dt_AST = datetime.timedelta(seconds=0.5)
+
+        try:
+            self.data_wave
+        except:
+            self.data_wave = {}
+
+        try:
+            self.data_wave_burst
+        except:
+            self.data_wave_burst = {}                        
+
+        t  = []
+        tu = []
+        burst_tmp = []
+        for i in range(np.shape(self.rawdata['whd'][:,0])[0]):
+            burst = int(self.rawdata['whd'][i,6])
+            month  = int(self.rawdata['whd'][i,0])
+            day    = int(self.rawdata['whd'][i,1])
+            year   = int(self.rawdata['whd'][i,2])
+            hour   = int(self.rawdata['whd'][i,3])
+            minute = int(self.rawdata['whd'][i,4])
+            millis = self.rawdata['whd'][i,5]%1
+            second = int(self.rawdata['whd'][i,5] - millis)
+            micro  = int(millis*1000*1000)
+            ttmp = datetime.datetime(year,month,day,hour,minute,second,micro,tzinfo=self.timezone)
+            t.append(ttmp)
+            tu.append(ttmp.timestamp())
+            burst_tmp.append(burst)
+
+        # Map burst data
+        logger.debug('Mapping burst data (.whd)')
+        self.data_wave['t'] = t
+        self.data_wave['tu'] = tu
+        for k in self.header['wave_header'].keys():
+            ind_key = self.header['wave_header'][k] - 1
+            self.data_wave[k] = self.rawdata['whd'][:,ind_key]
 
 
+        # Calculate time for ensemble members of burst
+        logger.debug('Mapping ensemble members of burst data (.wad)')        
+        for k in self.header['wave_data'].keys():
+            ind_key = self.header['wave_data'][k] - 1
+            self.data_wave_burst[k] = self.rawdata['wad'][:,ind_key]
+
+        logger.debug('Creating time axis for burst members')
+        t_burst  = []
+        tu_burst = []
+        t_AST  = []
+        AST  = []                
+        for i in range(np.shape(self.rawdata['wad'][:,0])[0]):
+            burst = int(self.rawdata['wad'][i,0])
+            ensemble = int(self.rawdata['wad'][i,1])
+            #print('burst',burst,'ensemble',ensemble)
+            #print(burst_tmp)
+            iburst = burst_tmp.index(burst)
+            #print('iburst',iburst)
+            #t_iburst = t[iburst]            
+            t_ensemble = t[iburst] + (ensemble - 1 ) * dt
+            t_burst.append(t_ensemble)
+            # AST is sampled with double frequency
+            AST1 = float(self.rawdata['wad'][i,3])
+            AST2 = float(self.rawdata['wad'][i,4])
+            AST.append(AST1)
+            AST.append(AST2)
+            t_AST1 = t[iburst] + (ensemble - 1 ) * dt - dt_AST
+            t_AST2 = t[iburst] + (ensemble - 1 ) * dt
+            t_AST.append(t_AST1)
+            t_AST.append(t_AST2)            
 
 
+        self.data_wave_burst['t'] = t_burst
+        self.data_wave_burst['t_AST'] = t_AST
+        self.data_wave_burst['AST'] = AST
+            
+        
 
 
-
-    
     def process_rawdata(self):
         """ Processes .sen data stored in data['sen'] and the remaining rawdata
         """
-        print('Creating time axis')
+        logger.debug('Creating time axis')
         t  = []
         tu = []        
         for i in range(np.shape(self.rawdata['sen'][:,0])[0]):

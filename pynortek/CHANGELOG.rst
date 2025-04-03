@@ -1,5 +1,6 @@
 Changelog
 ---------
+- 0.4.4: Improvements of reading in AWAC wave data
 - 0.4.3: Burst average with a correlation threshold
 - 0.4.2: The burst timestamp used for calculation is taken as the first sys package and not the header date. 
 - 0.4.0: Added timestamp computation based on the sys packages, working for continous data now. Added timestamp.log file to check the calculated time stamps
