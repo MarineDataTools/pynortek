@@ -497,7 +497,8 @@ class pynortek():
         t_burst  = []
         tu_burst = []
         t_AST  = []
-        tu_AST  = []        
+        tu_AST  = []
+        burst_AST  = []        
         AST  = []                
         for i in range(np.shape(self.rawdata['wad'][:,0])[0]):
             burst = int(self.rawdata['wad'][i,0])
@@ -519,6 +520,8 @@ class pynortek():
             t_AST2 = t[iburst] + (ensemble - 1 ) * dt
             t_AST.append(t_AST1)
             t_AST.append(t_AST2)
+            burst_AST.append(burst)
+            burst_AST.append(burst)
             tu_AST.append(t_AST1.timestamp())
             tu_AST.append(t_AST2.timestamp())
 
@@ -530,6 +533,7 @@ class pynortek():
         self.data_wave_burst['tu'] = tu_burst
         self.data_wave_burst['tu_AST'] = tu_AST        
         self.data_wave_burst['AST'] = AST
+        self.data_wave_burst['burst_AST'] = burst_AST        
             
         
 
