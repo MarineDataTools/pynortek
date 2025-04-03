@@ -497,6 +497,7 @@ class pynortek():
         t_burst  = []
         tu_burst = []
         t_AST  = []
+        tu_AST  = []        
         AST  = []                
         for i in range(np.shape(self.rawdata['wad'][:,0])[0]):
             burst = int(self.rawdata['wad'][i,0])
@@ -508,6 +509,7 @@ class pynortek():
             #t_iburst = t[iburst]            
             t_ensemble = t[iburst] + (ensemble - 1 ) * dt
             t_burst.append(t_ensemble)
+            tu_burst.append(t_ensemble.timestamp())            
             # AST is sampled with double frequency
             AST1 = float(self.rawdata['wad'][i,3])
             AST2 = float(self.rawdata['wad'][i,4])
@@ -516,11 +518,17 @@ class pynortek():
             t_AST1 = t[iburst] + (ensemble - 1 ) * dt - dt_AST
             t_AST2 = t[iburst] + (ensemble - 1 ) * dt
             t_AST.append(t_AST1)
-            t_AST.append(t_AST2)            
+            t_AST.append(t_AST2)
+            tu_AST.append(t_AST1.timestamp())
+            tu_AST.append(t_AST2.timestamp())
+
+
 
 
         self.data_wave_burst['t'] = t_burst
         self.data_wave_burst['t_AST'] = t_AST
+        self.data_wave_burst['tu'] = tu_burst
+        self.data_wave_burst['tu_AST'] = tu_AST        
         self.data_wave_burst['AST'] = AST
             
         
